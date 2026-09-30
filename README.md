@@ -35,9 +35,6 @@ npm install
 npx electron-builder install-app-deps   # 为 Electron 重编译 better-sqlite3
 npm run dist                            # 输出便携版 exe 到 release/
 ```
-
-技术栈：Electron 37 · better-sqlite3 · 原生 JS（无框架）
-
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
