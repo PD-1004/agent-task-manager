@@ -1,0 +1,11 @@
+node_modules/
+release/
+release-new/
+dist/
+dist-out/
+tmp-*/
+tmp-asar-src/
+*.tmp
+*.tmp_old/
+builder-debug.yml
+npm-debug.log*
