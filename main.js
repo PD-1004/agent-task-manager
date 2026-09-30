@@ -2,7 +2,7 @@
 const { app, BrowserWindow, ipcMain, dialog, clipboard, shell } = require('electron');
 
 /* 更新提醒：改成你自己的 GitHub 仓库（owner/repo），如 changexbc/workbuddy-switch */
-const UPDATE_REPO = 'YOUR_GITHUB_USER/YOUR_REPO';
+const UPDATE_REPO = 'PD-1004/agent-task-manager';
 function gtVer(a, b) {
   const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
