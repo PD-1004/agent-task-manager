@@ -1,4 +1,4 @@
-# Agent任务管理器 (Win64)
+# Agent任务管理器
 
 > ZCode / WorkBuddy 项目路径一键诊断与迁移、任务历史管理 —— Windows 桌面工具（Electron）
 
@@ -23,7 +23,7 @@
 
 ## 下载使用
 
-前往 [Releases](https://github.com/PD-1004/agent-task-manager/releases) 下载 `Agent任务管理器(Win64)-便携版-x.x.x.exe`：
+前往 [Releases](https://github.com/PD-1004/agent-task-manager/releases) 下载 `Agent任务管理器-便携版-x.x.x.exe`：
 
 - 便携版为单文件，**免安装**，双击即用
 - 详细功能说明见 [使用说明.md](./使用说明.md)

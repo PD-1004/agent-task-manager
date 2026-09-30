@@ -30,7 +30,7 @@
   },
   "build": {
     "appId": "com.zcode.pathdoctor",
-    "productName": "Agent任务管理器 (Win64)",
+    "productName": "Agent任务管理器",
     "directories": {
       "output": "release"
     },
@@ -57,10 +57,10 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "Agent任务管理器(Win64)-安装版-${version}.exe"
+      "artifactName": "Agent任务管理器-安装版-${version}.exe"
     },
     "portable": {
-      "artifactName": "Agent任务管理器(Win64)-便携版-${version}.exe"
+      "artifactName": "Agent任务管理器-便携版-${version}.exe"
     },
     "npmRebuild": false
   }

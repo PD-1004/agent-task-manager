@@ -41,7 +41,7 @@ async function requireClosed(kind) {
   if (r.running) throw new Error(`检测到 ${name} 正在运行！请先完全退出（托盘右键 → 退出），否则修改会被程序写回覆盖。`);
 }
 
-const TITLE = 'Agent 任务管理器 (Win64) - 开发者公众号：掌心向暖RPA自动化';
+const TITLE = 'Agent 任务管理器 - 开发者公众号：掌心向暖RPA自动化';
 
 function registerIpc() {
   slog('registerIpc: start');
