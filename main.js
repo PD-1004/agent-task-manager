@@ -1,6 +1,11 @@
 'use strict';
 const { app, BrowserWindow, ipcMain, dialog, clipboard, shell } = require('electron');
 
+// 本应用为纯 DOM 界面（无视频/3D/WebGL），禁用 GPU 加速：
+// 部分机器首次启动时 GPU 进程初始化 / 着色器编译极慢，甚至渲染进程直接崩溃
+// （启动日志可见 RENDER-GONE exitCode=0x80000003），是"初次启动白屏"的主因。
+app.disableHardwareAcceleration();
+
 /* 更新提醒：改成你自己的 GitHub 仓库（owner/repo），如 changexbc/workbuddy-switch */
 const UPDATE_REPO = 'PD-1004/agent-task-manager';
 function gtVer(a, b) {
@@ -159,7 +164,7 @@ function createWindow() {
       title: TITLE,
       autoHideMenuBar: true,
       backgroundColor: '#eef2f8',
-      show: true, // 立即显示窗口给出反馈；内容随后就位（背景色与主题一致，无白闪）
+      show: false, // 内容就绪后再显示，避免冷启动时页面加载数秒、用户盯着空白窗口
       icon: canUseIcon ? iconFile : undefined,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -172,7 +177,12 @@ function createWindow() {
     throw e;
   }
   slog('BrowserWindow created, icon=' + (canUseIcon ? 'app.ico' : 'exe-embedded'));
-  win.once('ready-to-show', () => { slog('ready-to-show fired -> show()'); win.show(); slog('show() called'); });
+  const showWin = () => {
+    if (win && !win.isDestroyed() && !win.isVisible()) { win.show(); slog('show() called'); }
+  };
+  win.once('ready-to-show', () => { slog('ready-to-show fired'); showWin(); });
+  // 兜底：个别环境 ready-to-show 可能不触发，4 秒后无论如何显示窗口（backgroundColor 与主题一致）
+  setTimeout(showWin, 4000);
   win.webContents.on('did-fail-load', (_e, code, desc) => slog('did-fail-load: ' + code + ' ' + desc));
   win.webContents.on('render-process-gone', (_e, details) => slog('RENDER-GONE: ' + details.reason + ' exitCode=' + details.exitCode));
   win.webContents.on('preload-error', (_e, p, err) => slog('preload-error: ' + String(err).slice(0, 150)));
