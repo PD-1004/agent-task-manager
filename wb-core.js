@@ -1,7 +1,7 @@
 'use strict';
 /**
- * WB 空间迁移助手逻辑 —— 忠实移植自 wb-space-migrator/migrator.py（WorkBuddy 平台）
- * 数据结构（逆向 WorkBuddy app.asar 校准）：
+ * WorkBuddy 空间迁移逻辑
+ * 数据结构（依据 WorkBuddy app.asar 校准）：
  *   ~/.workbuddy/workbuddy.db                 sessions.cwd / workspaces(path) 表
  *   ~/.workbuddy/projects/<slug>/             slug = compressWorkspacePathName(cwd)
  *   ~/.workbuddy/file-tree-manifests/*.json   文件树索引（含绝对路径，JSON 转义）
@@ -9,7 +9,7 @@
  *   ~/.workbuddy/workspace/sessions/<sid>/    会话文件修改备份
  *   ~/.workbuddy/workspace-display-names.json 空间显示名
  *   ~/.workbuddy/sessions/<pid>.json          运行时心跳（陈旧的清理）
- * 按用户决策：不含备份步骤（原 6 步中的备份已去除，共 5 步）。
+ * 迁移共 5 步，不含备份（清除操作不可恢复）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -224,7 +224,7 @@ function findOldProjectDirs(oldP) {
   return found;
 }
 
-/* ---------- 迁移（dry_run=仅预览；无备份步骤，按用户决策） ---------- */
+/* ---------- 迁移（dry_run=仅预览；无备份步骤） ---------- */
 
 function migrate(oldP, newP, { dryRun = false, log = () => {} } = {}) {
   oldP = path.win32.normalize(String(oldP || '').replace(/[\\/]+$/, ''));
@@ -293,7 +293,7 @@ function migrate(oldP, newP, { dryRun = false, log = () => {} } = {}) {
       return { preview: true, sessions: sessHits.length, workspaces: wsHits.length, files: textTargets.length, dirs: oldDirs.length, heartbeats: heartbeats.length };
     }
 
-    // ---- 实际执行（5 步；按用户决策不含备份） ----
+    // ---- 实际执行（5 步，无备份） ----
     log('步骤 1/5 更新数据库…');
     const tx = con.transaction(() => {
       for (const r of sessHits) {

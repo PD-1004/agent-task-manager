@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   zcTasks: () => ipcRenderer.invoke('zc:tasks'),
   zcTaskRemove: (taskId) => ipcRenderer.invoke('zc:task:remove', { taskId }),
 
-  // WorkBuddy 空间 / 任务（逻辑源自 wb-space-migrator）
+  // WorkBuddy 空间 / 任务
   wbRunning: () => ipcRenderer.invoke('wb:running'),
   wbHome: () => ipcRenderer.invoke('wb:home'),
   wbKill: () => ipcRenderer.invoke('wb:kill'),

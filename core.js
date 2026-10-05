@@ -1,8 +1,8 @@
 'use strict';
 /**
- * ZCode 路径修复器 - 核心逻辑（不依赖 Electron，可独立测试）
+ * Agent任务管理器 - ZCode 核心逻辑（不依赖 Electron，可独立测试）
  *
- * 知识来源：2026-09 实战逆向 ZCode 存储结构，路径绑定分布在：
+ * ZCode 的路径绑定分布在：
  *  1. v2/setting.json                -> recentProjects / lastWorkspaceSession
  *  2. v2/tasks-index.sqlite          -> tasks(workspace_path, workspace_key, meta_json)
  *                                       task_group_view_node_orders(node_key, JSON 转义路径)

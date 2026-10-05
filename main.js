@@ -94,7 +94,7 @@ function registerIpc() {
     if (!UPDATE_REPO || UPDATE_REPO.includes('YOUR_GITHUB_USER')) return null;
     try {
       const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
-        headers: { 'User-Agent': 'zcode-path-doctor', Accept: 'application/vnd.github+json' },
+        headers: { 'User-Agent': 'agent-task-manager', Accept: 'application/vnd.github+json' },
       });
       if (!res.ok) return null;
       const d = await res.json();
@@ -126,7 +126,7 @@ function registerIpc() {
     return core.removeTask(taskId, zlog);
   });
 
-  /* ---------- WorkBuddy 空间（逻辑源自 wb-space-migrator） ---------- */
+  /* ---------- WorkBuddy 空间 ---------- */
   ipcMain.handle('wb:scan', () => wb.findBroken());
   ipcMain.handle('wb:spaces', () => wb.listSpaces());
   ipcMain.handle('wb:uid', () => wb.currentUid());
