@@ -1,6 +1,6 @@
 # Agent任务管理器
 
-**项目搬家 · 历史不丢。** 一个给 ZCode 和 WorkBuddy 用户的 Windows 桌面工具（Electron）：项目文件夹搬家后一键修复路径绑定、找回任务历史，顺便把堆积的任务和空间管理得干干净净。
+**项目搬家 · 历史不丢。** 一个给 ZCode 和 WorkBuddy 用户的 Windows 桌面工具：项目文件夹搬家后一键修复路径绑定、找回任务历史，顺便把堆积的任务和空间管理得干干净净。
 
 ## 它解决什么问题
 
@@ -15,11 +15,11 @@
 
 ## 快速开始
 
-前往 [Releases](https://github.com/PD-1004/agent-task-manager/releases/latest) 下载最新便携版：
+前往 [Releases](https://github.com/PD-1004/agent-task-manager/releases/latest) 下载最新版：
 
 | 文件 | 说明 |
 |---|---|
-| `AgentTaskManager-Portable-x.x.x.exe` | Windows 10/11 x64 · 单文件 · 免安装，下载后双击即用 |
+| `AgentTaskManager-x.x.x.exe` | Windows 10/11 x64，下载后双击运行 |
 
 启动后选择要管理的产品（ZCode 或 WorkBuddy）即可进入对应管理页，两个入口能力一致。
 
@@ -75,13 +75,16 @@
 
 ## 从源码构建
 
+当前版本的源码在 [`wails/`](./wails) 目录：
+
 ```bash
-npm install
-npx electron-builder install-app-deps   # 为 Electron 重编译 better-sqlite3
-npm run dist                            # 输出便携版 exe 到 release/
+cd wails
+wails build -platform windows/amd64   # 输出到 wails/build/bin/
 ```
 
-技术栈：Electron 37 · better-sqlite3 · 原生 JS
+技术栈：Go · Wails v2 · modernc.org/sqlite（纯 Go SQLite 驱动）· 原生 JS
+
+> 仓库根目录下的文件是 v1.3.5 及更早版本的代码，保留供对照。
 
 ## 许可
 

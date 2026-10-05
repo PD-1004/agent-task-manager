@@ -1,19 +1,26 @@
-# README
+# Agent任务管理器（源码）
 
-## About
+当前版本的源码目录。项目介绍、功能说明与使用文档见仓库根目录的 [README.md](https://github.com/PD-1004/agent-task-manager#readme)。
 
-This is the official Wails Vanilla template.
+## 构建
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+需要 Go 1.20+ 与 Wails CLI v2：
 
-## Live Development
+```bash
+wails build -platform windows/amd64   # 输出到 build/bin/
+```
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## 目录说明
 
-## Building
+| 文件 | 职责 |
+|---|---|
+| `main.go` | 程序入口、窗口与绑定注册 |
+| `app.go` | 系统托盘、环境状态、ZCode 路径扫描 |
+| `core.go` | ZCode：任务清单、项目任务与文件、路径迁移、移除 |
+| `wbcore.go` | WorkBuddy：会话、空间、路径迁移、移除 |
+| `hide_windows.go` / `hide_other.go` | 调用 `tasklist` / `taskkill` 时隐藏子进程窗口 |
+| `frontend/dist/` | 前端静态资源，由 Wails 直接 embed，改动后需重新构建 |
 
-To build a redistributable, production mode package, use `wails build`.
+## 注意
+
+修改 ZCode 或 WorkBuddy 的数据前，请先完全退出对应客户端，否则改动可能被客户端写回覆盖。
