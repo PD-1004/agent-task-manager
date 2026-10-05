@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -48,7 +49,8 @@ type ScanResult struct {
 /* ---------- App ---------- */
 
 type App struct {
-	ctx context.Context
+	ctx     context.Context
+	exiting int32 // 托盘「退出」时置 1：beforeClose 放行，进程真正退出
 }
 
 func NewApp() *App { return &App{} }
@@ -58,6 +60,16 @@ func (a *App) startup(ctx context.Context) {
 	go systray.Run(a.onTrayReady, func() {})
 	// 启动时异步同步一次 WorkBuddy 内的删除，避免阻塞界面与轮询
 	go a.purgeDeletedSessions()
+}
+
+// beforeClose：关闭窗口的统一入口。正常点 X 只是隐藏到托盘；
+// 托盘「退出」会先置 exiting 标志，这里放行，让进程真正退出（WebView2 随之结束）。
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if atomic.LoadInt32(&a.exiting) == 1 {
+		return false
+	}
+	runtime.WindowHide(ctx)
+	return true
 }
 
 
@@ -81,7 +93,7 @@ func (a *App) onTrayReady() {
 					runtime.WindowShow(a.ctx)
 				}
 			case <-mQuit.ClickedCh:
-				systray.Quit()
+				atomic.StoreInt32(&a.exiting, 1)
 				if a.ctx != nil {
 					runtime.Quit(a.ctx)
 				}
