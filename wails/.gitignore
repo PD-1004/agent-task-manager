@@ -1,0 +1,6 @@
+build/bin
+node_modules
+
+# 父级 .gitignore 忽略 dist/（Electron 构建产物），
+# 但这里的 frontend/dist 是 Wails embed 的静态前端，必须入库
+!frontend/dist/
