@@ -134,28 +134,25 @@ async function waitUntilZcodeClosed(timeout = 6000) {
   }
   return !(await zcodeIsRunning());
 }
-/* ZCode 运行中的统一拦截：明确说明原因并支持一键结束进程后继续。
-   此前只是一闪而过的 toast，用户往往以为「点了没反应」 */
-async function ensureZcodeClosed(action) {
-  const running = await zcodeIsRunning();
-  await refreshEnv(); // 顺带把胶囊状态刷新到最新，避免 UI 与实际不一致
-  if (!running) return true;
+/* 删除失败后的自救：后端报「ZCode 正在运行」时可一键结束进程并自动重试（不重复确认）。
+   校验放在确认之后（与 1.3.4 一致），点击后一定会先弹确认框 */
+async function onRemoveFailed(err, retry) {
+  const msg = (err && err.message) ? err.message : String(err);
+  if (!/正在运行/.test(msg)) { toast(msg); return; }
   const go = await confirmDialog({
-    title: `无法${action}：ZCode 正在运行`,
-    message: `ZCode 正在运行，它会锁定数据并在退出时把内存中的改动回写，此时${action}不会生效。\n\n`
-      + '你可以手动完全退出 ZCode（含托盘）后重试，或直接结束它的进程。\n\n'
-      + '· 结束进程不会删除磁盘上的项目文件\n'
+    title: 'ZCode 仍在运行，操作未生效',
+    message: msg + '\n\n可以直接结束 ZCode 进程后自动重试：\n'
+      + '· 不会删除磁盘上的项目文件夹\n'
       + '· ZCode 中未保存的会话内容可能丢失',
     danger: true,
-    confirmText: '结束 ZCode 进程',
+    confirmText: '结束进程并重试',
     cancelText: '取消',
   });
-  if (!go) return false;
+  if (!go) return;
   await window.api.killZcode();
-  const closed = await waitUntilZcodeClosed();
+  if (!(await waitUntilZcodeClosed())) { toast('ZCode 进程仍未退出，请手动关闭（含托盘）后重试', 'error'); return; }
   await refreshEnv();
-  if (!closed) { toast('ZCode 进程仍未退出，请手动关闭（含托盘）后重试', 'error'); return false; }
-  return true;
+  await retry();
 }
 $('#btnKill').addEventListener('click', async () => {
   const r = await window.api.killZcode();
@@ -351,21 +348,22 @@ async function refreshZcTasks() {
 
 async function removeTaskFlow(btn) {
   const id = btn.dataset.del, title = btn.dataset.title, msgs = +btn.dataset.msgs;
-  if (!(await ensureZcodeClosed('清除任务'))) return;
   if (!(await confirmDialog({ title: '彻底清除任务', message: `确定彻底清除任务「${title}」？\n\n将删除：${msgs} 条聊天消息及全部关联数据（不可恢复）\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`, danger: true, confirmText: '彻底清除' }))) return;
-  try {
-    const r = await window.api.zcTaskRemove(id);
-    zcSel.delete(id);
-    toast(`任务已清除（${r.msgs} 条消息）`, 'success');
-    await refreshZcTasks();
-  } catch (e) { toast(e.message || String(e)); }
+  const run = async () => {
+    try {
+      const r = await window.api.zcTaskRemove(id);
+      zcSel.delete(id);
+      toast(`任务已清除（${r.msgs} 条消息）`, 'success');
+      await refreshZcTasks();
+    } catch (e) { await onRemoveFailed(e, run); }
+  };
+  await run();
 }
 
 /* 批量清除所选任务 */
 async function removeZcBatch() {
   const ids = [...zcSel];
   if (!ids.length) return;
-  if (!(await ensureZcodeClosed('清除任务'))) return;
   const items = ids.map((id) => (zcTasks || []).find((t) => t.id === id)).filter(Boolean);
   if (!items.length) return;
   const msgs = items.reduce((s, t) => s + (t.msgs || 0), 0);
@@ -375,13 +373,17 @@ async function removeZcBatch() {
     + `将删除：${msgs} 条聊天消息、${files} 个任务文件引用及全部关联数据（不可恢复）\n`
     + `· 此操作不创建备份\n· 需要 ZCode 已完全退出`;
   if (!(await confirmDialog({ title: '批量清除任务', message: msg, danger: true, confirmText: '彻底清除' }))) return;
-  let ok = 0, fail = 0;
-  for (const id of ids) {
-    try { await window.api.zcTaskRemove(id); ok++; } catch { fail++; }
-  }
-  zcSel.clear();
-  await refreshZcTasks();
-  toast(fail ? `已清除 ${ok} 个任务，${fail} 个失败（可能是 ZCode 被重新打开）` : `已清除 ${ok} 个任务`, fail ? 'error' : 'success');
+  const run = async () => {
+    let ok = 0, fail = 0, lastErr = null;
+    for (const id of ids) {
+      try { await window.api.zcTaskRemove(id); ok++; } catch (e) { fail++; lastErr = e; }
+    }
+    zcSel.clear();
+    await refreshZcTasks();
+    toast(fail ? `已清除 ${ok} 个任务，${fail} 个失败（可能是 ZCode 被重新打开）` : `已清除 ${ok} 个任务`, fail ? 'error' : 'success');
+    if (fail && lastErr) await onRemoveFailed(lastErr, run);
+  };
+  await run();
 }
 
 /* ---------- ZCode 项目（扫描 + 多选/批量移除 + 行内迁移弹窗 + 双击任务弹窗） ---------- */
@@ -503,7 +505,6 @@ $('#scanTable tbody').addEventListener('dblclick', (e) => {
 async function removeZcProjectBatch() {
   const paths = [...zcProjSel];
   if (!paths.length) return;
-  if (!(await ensureZcodeClosed('移除项目'))) return;
   const items = paths.map((p) => (lastScan && lastScan.paths || []).find((x) => x.path === p)).filter(Boolean);
   if (!items.length) return;
   const tasks = items.reduce((s, p) => s + (p.refs.tasks || 0), 0);
@@ -513,13 +514,17 @@ async function removeZcProjectBatch() {
     + `将移除：程序设置记录、${tasks} 条任务登记、${sessions} 个会话（含全部聊天记录）\n`
     + `· 磁盘上的项目文件夹不会被删除\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`;
   if (!(await confirmDialog({ title: '批量移除项目', message: msg, danger: true, confirmText: '移除项目' }))) return;
-  let ok = 0, fail = 0;
-  for (const p of paths) {
-    try { await window.api.removeProject(p); ok++; } catch { fail++; }
-  }
-  zcProjSel.clear();
-  await doScan();
-  toast(fail ? `已移除 ${ok} 个项目，${fail} 个失败（可能是 ZCode 被重新打开）` : `已移除 ${ok} 个项目`, fail ? 'error' : 'success');
+  const run = async () => {
+    let ok = 0, fail = 0, lastErr = null;
+    for (const p of paths) {
+      try { await window.api.removeProject(p); ok++; } catch (e) { fail++; lastErr = e; }
+    }
+    zcProjSel.clear();
+    await doScan();
+    toast(fail ? `已移除 ${ok} 个项目，${fail} 个失败（可能是 ZCode 被重新打开）` : `已移除 ${ok} 个项目`, fail ? 'error' : 'success');
+    if (fail && lastErr) await onRemoveFailed(lastErr, run);
+  };
+  await run();
 }
 
 /* 项目迁移弹窗 */
@@ -551,7 +556,6 @@ $('#migModalStart').addEventListener('click', async () => {
 
 /* ---------- ZCode：移除项目（二次确认） ---------- */
 async function removeProjectFlow(btn) {
-  if (!(await ensureZcodeClosed('移除项目'))) return;
   const p = btn.dataset.remove, sessions = +btn.dataset.sessions, tasks = +btn.dataset.tasks;
   const msg = `确定从 ZCode 中移除项目「${p}」？\n\n`
     + `将移除：程序设置记录、${tasks} 条任务登记、${sessions} 个会话（含全部聊天记录）\n`
@@ -559,12 +563,15 @@ async function removeProjectFlow(btn) {
     + `· 此操作不创建备份，请确认不再需要\n`
     + `· 需要 ZCode 已完全退出`;
   if (!(await confirmDialog({ title: '移除项目', message: msg, danger: true, confirmText: '移除项目' }))) return;
-  try {
-    const r = await window.api.removeProject(p);
-    zcProjSel.delete(p);
-    toast(`项目已移除（${r.sessions} 个会话、${r.messages} 条消息）`, 'success');
-    await doScan();
-  } catch (e) { toast(e.message || String(e)); }
+  const run = async () => {
+    try {
+      const r = await window.api.removeProject(p);
+      zcProjSel.delete(p);
+      toast(`项目已移除（${r.sessions} 个会话、${r.messages} 条消息）`, 'success');
+      await doScan();
+    } catch (e) { await onRemoveFailed(e, run); }
+  };
+  await run();
 }
 
 /* ---------- ZCode：项目任务弹窗（双击项目名称；支持移除单个任务） ---------- */
@@ -599,20 +606,22 @@ $('#zcProjTasksList').addEventListener('click', (e) => {
   if (b) removeZcProjectTaskFlow(b.dataset.zdel, b.dataset.ztitle);
 });
 async function removeZcProjectTaskFlow(id, title) {
-  if (!(await ensureZcodeClosed('清除任务'))) return;
   if (!(await confirmDialog({
     title: '彻底清除任务',
     message: `确定彻底清除任务「${title}」？\n\n将删除：该任务的全部聊天记录及关联数据（不可恢复）\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`,
     danger: true, confirmText: '彻底清除',
   }))) return;
-  try {
-    const r = await window.api.zcTaskRemove(id);
-    zcSel.delete(id);
-    toast(`任务已清除（${r.msgs} 条消息）`, 'success');
-    if (zcProjTasksCurrentPath) await openZcProjectTasks(zcProjTasksCurrentPath); // 刷新弹窗
-    doScan();
-    refreshZcTasks();
-  } catch (e) { toast(e.message || String(e)); }
+  const run = async () => {
+    try {
+      const r = await window.api.zcTaskRemove(id);
+      zcSel.delete(id);
+      toast(`任务已清除（${r.msgs} 条消息）`, 'success');
+      if (zcProjTasksCurrentPath) await openZcProjectTasks(zcProjTasksCurrentPath); // 刷新弹窗
+      doScan();
+      refreshZcTasks();
+    } catch (e) { await onRemoveFailed(e, run); }
+  };
+  await run();
 }
 
 /* ---------- WorkBuddy 环境 ---------- */
