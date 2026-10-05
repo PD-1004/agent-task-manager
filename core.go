@@ -855,20 +855,26 @@ func (a *App) RemoveTask(taskID string) (RemoveTaskResult, error) {
 		var c sql.NullInt64
 		db.QueryRow("SELECT COUNT(*) FROM message WHERE session_id=?", taskID).Scan(&c)
 		res.Msgs = int(c.Int64)
-		tx, err := db.Begin()
-		if err == nil {
-			for _, t := range allTables(db) {
-				if t == "session" {
-					continue
-				}
-				cols := tableColumns(db, t)
-				for _, col := range []string{"session_id", "parent_session_id", "child_session_id"} {
-					for _, c2 := range cols {
-						if c2 == col {
-							execAffected(tx, "DELETE FROM "+t+" WHERE "+col+"=?", taskID)
-						}
+		// 表结构信息先在事务外收集：openRW 为单连接，事务开启后再用 db 查询会挂死
+		type delTarget struct{ table, col string }
+		targets := []delTarget{}
+		for _, t := range allTables(db) {
+			if t == "session" {
+				continue
+			}
+			cols := tableColumns(db, t)
+			for _, col := range []string{"session_id", "parent_session_id", "child_session_id"} {
+				for _, c2 := range cols {
+					if c2 == col {
+						targets = append(targets, delTarget{t, col})
 					}
 				}
+			}
+		}
+		tx, err := db.Begin()
+		if err == nil {
+			for _, d := range targets {
+				execAffected(tx, "DELETE FROM "+d.table+" WHERE "+d.col+"=?", taskID)
 			}
 			execAffected(tx, "DELETE FROM session WHERE id=?", taskID)
 			tx.Commit()

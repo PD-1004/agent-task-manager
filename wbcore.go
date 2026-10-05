@@ -999,12 +999,51 @@ func isSpaceSession(r wbSessionRow) bool {
 	return true
 }
 
+// purgeDeletedSessions：把 WorkBuddy 内已标记删除（deleted_at 非空）的会话彻底清除。
+// 这样「在 WorkBuddy 里删除」和「在本应用里移除」结果一致：数据库记录与磁盘残留一起清掉，不再出现。
+// 由 startup 异步调用一次；WorkBuddy 客户端运行中时跳过，避免与其写库冲突。
+func (a *App) purgeDeletedSessions() {
+	if a.WbRunning() {
+		return
+	}
+	dbPath := wbDb()
+	if _, err := os.Stat(dbPath); err != nil {
+		return
+	}
+	db, err := openRO(dbPath)
+	if err != nil {
+		return
+	}
+	ids := []string{}
+	for _, r := range querySessions(db) {
+		if r["deleted_at"] != "" {
+			ids = append(ids, r["id"])
+		}
+	}
+	db.Close()
+	if len(ids) == 0 {
+		return
+	}
+	n := 0
+	for _, id := range ids {
+		if !regexp.MustCompile(`^[\w.-]+$`).MatchString(id) {
+			continue
+		}
+		a.removeSession(id)
+		n++
+	}
+	if n > 0 {
+		a.logf("🧹 已同步 WorkBuddy 内删除的 %d 个会话（记录与残留一并清除）", n)
+	}
+}
+
 func (a *App) WbSessions() []WbSession {
 	out := []WbSession{}
 	dbPath := wbDb()
 	if _, err := os.Stat(dbPath); err != nil {
 		return out
 	}
+	// 注：同步 WorkBuddy 内删除的动作在 startup 中异步执行，不放在这里，避免阻塞前端轮询
 	db, err := openRO(dbPath)
 	if err != nil {
 		return out
@@ -1013,6 +1052,10 @@ func (a *App) WbSessions() []WbSession {
 	uidNow := currentUid()
 	for _, r := range querySessions(db) {
 		if uidNow != "" && r["user_id"] != uidNow {
+			continue
+		}
+		// 已删除的会话一律不展示：无论在 WorkBuddy 里删的，还是在本应用里移除的
+		if r["deleted_at"] != "" {
 			continue
 		}
 		if isSpaceSession(r) {
@@ -1058,20 +1101,27 @@ func (a *App) removeSession(sid string) WbRemoveResult {
 	cwd := ""
 	if db, err := openRW(dbPath); err == nil {
 		db.QueryRow("SELECT cwd FROM sessions WHERE id=?", sid).Scan(&cwd)
-		tx, err := db.Begin()
-		if err == nil {
-			for _, t := range allTables(db) {
-				if t == "sessions" {
-					continue
-				}
-				cols := tableColumns(db, t)
-				for _, col := range []string{"session_id", "parent_session_id", "child_session_id"} {
-					for _, c := range cols {
-						if c == col {
-							execAffected(tx, "DELETE FROM "+t+" WHERE "+col+"=?", sid)
-						}
+		// openRW 限制单连接，事务开启后不能再拿 db 做查询，否则永远等不到空闲连接而挂死。
+		// 因此表结构信息必须在 Begin 之前收集完毕。
+		type delTarget struct{ table, col string }
+		targets := []delTarget{}
+		for _, t := range allTables(db) {
+			if t == "sessions" {
+				continue
+			}
+			cols := tableColumns(db, t)
+			for _, col := range []string{"session_id", "parent_session_id", "child_session_id"} {
+				for _, c := range cols {
+					if c == col {
+						targets = append(targets, delTarget{t, col})
 					}
 				}
+			}
+		}
+		tx, err := db.Begin()
+		if err == nil {
+			for _, d := range targets {
+				execAffected(tx, "DELETE FROM "+d.table+" WHERE "+d.col+"=?", sid)
 			}
 			execAffected(tx, "DELETE FROM sessions WHERE id=?", sid)
 			tx.Commit()
@@ -1085,6 +1135,18 @@ func (a *App) removeSession(sid string) WbRemoveResult {
 			res.Disk++
 		}
 	}
+	// 兜底：cwd 为空或路径对不上时，按会话 id 在 projects 目录下扫描同名 jsonl
+	filepath.Walk(filepath.Join(wbHome(), "projects"), func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if info.Name() == sid+".jsonl" {
+			if os.Remove(p) == nil {
+				res.Disk++
+			}
+		}
+		return nil
+	})
 	for _, rel := range []string{"file-tree-manifests", "changes-index"} {
 		f := filepath.Join(wbHome(), rel, sid+".json")
 		if _, err := os.Stat(f); err == nil {

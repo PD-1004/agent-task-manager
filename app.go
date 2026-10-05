@@ -56,6 +56,8 @@ func NewApp() *App { return &App{} }
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	go systray.Run(a.onTrayReady, func() {})
+	// 启动时异步同步一次 WorkBuddy 内的删除，避免阻塞界面与轮询
+	go a.purgeDeletedSessions()
 }
 
 
