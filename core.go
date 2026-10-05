@@ -473,11 +473,19 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 			func() {
 				defer db.Close()
 				pat := subPattern(p)
+				// 表结构必须在开启事务前取好：事务进行中用 db 另开连接查询，
+				// 会被该事务持有的写锁阻塞，而事务又在等查询结果，形成自死锁
+				tables := allTables(db)
+				colsMap := map[string][]string{}
+				for _, t := range tables {
+					colsMap[t] = tableColumns(db, t)
+				}
+				hasTasks := tableExists(db, "tasks")
 				tx, err := db.Begin()
 				if err != nil {
 					return
 				}
-				if tableExists(db, "tasks") {
+				if hasTasks {
 					rows, err := tx.Query(`SELECT task_id FROM tasks WHERE workspace_path=? OR workspace_path LIKE ? ESCAPE '\'
 						OR workspace_key=? OR workspace_key LIKE ? ESCAPE '\'`, p, pat, p, pat)
 					if err == nil {
@@ -490,8 +498,8 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 						rows.Close()
 					}
 				}
-				for _, t := range allTables(db) {
-					cols := tableColumns(db, t)
+				for _, t := range tables {
+					cols := colsMap[t]
 					has := func(c string) bool {
 						for _, x := range cols {
 							if x == c {
@@ -544,6 +552,7 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 			func() {
 				defer db.Close()
 				pat := subPattern(p)
+				var hasMessage, hasLocalSetting bool
 				rows, err := db.Query(`SELECT id, project_id FROM session
 					WHERE directory=? OR directory LIKE ? ESCAPE '\' OR path=? OR path LIKE ? ESCAPE '\'`, p, pat, p, pat)
 				if err != nil {
@@ -568,11 +577,19 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 				if len(ids) == 0 {
 					return
 				}
+				// 同理：表结构在开启事务前取好，避免事务内用 db 查询时与写锁互相等待
+				tables := allTables(db)
+				colsMap := map[string][]string{}
+				for _, t := range tables {
+					colsMap[t] = tableColumns(db, t)
+				}
+				hasMessage = tableExists(db, "message")
+				hasLocalSetting = tableExists(db, "local_setting")
 				tx, err := db.Begin()
 				if err != nil {
 					return
 				}
-				if tableExists(db, "message") {
+				if hasMessage {
 					for _, part := range chunkStrings(ids, 400) {
 						ph := strings.TrimSuffix(strings.Repeat("?,", len(part)), ",")
 						args := make([]any, len(part))
@@ -585,11 +602,11 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 						}
 					}
 				}
-				for _, t := range allTables(db) {
+				for _, t := range tables {
 					if t == "session" {
 						continue
 					}
-					cols := tableColumns(db, t)
+					cols := colsMap[t]
 					for _, col := range []string{"session_id", "parent_session_id", "child_session_id"} {
 						found := false
 						for _, c := range cols {
@@ -616,7 +633,7 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 					args[i] = s
 				}
 				execAffected(tx, "DELETE FROM session WHERE id IN ("+ph+")", args...)
-				if tableExists(db, "local_setting") {
+				if hasLocalSetting {
 					for pid := range projSet {
 						res.ProjSettings += execAffected(tx, "DELETE FROM local_setting WHERE scope='project' AND scope_id=?", pid)
 					}
