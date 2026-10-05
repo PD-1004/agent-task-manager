@@ -125,6 +125,7 @@ func subPattern(p string) string { return likeEscape(p) + "\\%" }
 
 func (a *App) logf(format string, args ...interface{}) {
 	line := fmt.Sprintf(format, args...)
+	println(line) // 同时落 stderr，便于从启动器捕获诊断
 	if a.ctx != nil {
 		runtime.EventsEmit(a.ctx, "pd:log", line)
 	}
@@ -407,6 +408,10 @@ func (a *App) MigratePaths(oldP, newP string) (MigrateResult, error) {
 /* ---------- 移除项目 ---------- */
 
 func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
+	// ZCode 运行时会锁库并在退出时回写内存数据，此时移除必然无效，直接拒绝
+	if st := a.IsZcodeRunning(); st.Running {
+		return RemoveProjectResult{}, fmt.Errorf("ZCode 正在运行（PID %s），请先完全退出 ZCode（含托盘）再移除", strings.Join(st.Pids, ","))
+	}
 	p := strings.TrimRight(projectPath, "\\/")
 	if p == "" {
 		return RemoveProjectResult{}, fmt.Errorf("路径为空")
@@ -524,7 +529,9 @@ func (a *App) RemoveProject(projectPath string) (RemoveProjectResult, error) {
 						}
 					}
 				}
-				tx.Commit()
+				if err := tx.Commit(); err != nil {
+					a.logf("❌ 任务索引提交失败（库被锁或磁盘只读？）：%v", err)
+				}
 				a.logf("✏️ 任务索引：移除 %d 条任务、%d 条排序记录", res.Tasks, res.NodeOrders)
 			}()
 		}
@@ -835,6 +842,10 @@ func (a *App) ListDefaultTasks() ([]TaskItem, error) {
 }
 
 func (a *App) RemoveTask(taskID string) (RemoveTaskResult, error) {
+	// ZCode 运行时会锁库并在退出时回写内存数据，此时移除必然无效，直接拒绝
+	if st := a.IsZcodeRunning(); st.Running {
+		return RemoveTaskResult{}, fmt.Errorf("ZCode 正在运行（PID %s），请先完全退出 ZCode（含托盘）再移除", strings.Join(st.Pids, ","))
+	}
 	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(taskID) {
 		return RemoveTaskResult{}, fmt.Errorf("非法任务 ID")
 	}

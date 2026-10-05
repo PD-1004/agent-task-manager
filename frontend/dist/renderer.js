@@ -133,6 +133,30 @@ async function waitUntilZcodeClosed(timeout = 6000) {
     await new Promise((r) => setTimeout(r, 400));
   }
   return !(await zcodeIsRunning());
+
+/* ZCode 运行中的统一拦截：明确说明原因并支持一键结束进程后继续。
+   此前只是一闪而过的 toast，用户往往以为「点了没反应」 */
+async function ensureZcodeClosed(action) {
+  const running = await zcodeIsRunning();
+  await refreshEnv(); // 顺带把胶囊状态刷新到最新，避免 UI 与实际不一致
+  if (!running) return true;
+  const go = await confirmDialog({
+    title: `无法${action}：ZCode 正在运行`,
+    message: `ZCode 正在运行，它会锁定数据并在退出时把内存中的改动回写，此时${action}不会生效。\n\n`
+      + '你可以手动完全退出 ZCode（含托盘）后重试，或直接结束它的进程。\n\n'
+      + '· 结束进程不会删除磁盘上的项目文件\n'
+      + '· ZCode 中未保存的会话内容可能丢失',
+    danger: true,
+    confirmText: '结束 ZCode 进程',
+    cancelText: '取消',
+  });
+  if (!go) return false;
+  await window.api.killZcode();
+  const closed = await waitUntilZcodeClosed();
+  await refreshEnv();
+  if (!closed) { toast('ZCode 进程仍未退出，请手动关闭（含托盘）后重试', 'error'); return false; }
+  return true;
+}
 }
 $('#btnKill').addEventListener('click', async () => {
   const r = await window.api.killZcode();
@@ -328,9 +352,7 @@ async function refreshZcTasks() {
 
 async function removeTaskFlow(btn) {
   const id = btn.dataset.del, title = btn.dataset.title, msgs = +btn.dataset.msgs;
-  const running = await zcodeIsRunning();
-  await refreshEnv(); // 顺带把胶囊状态刷新到最新（避免 UI 显示与实际不一致）
-  if (running) { toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。'); return; }
+  if (!(await ensureZcodeClosed('清除任务'))) return;
   if (!(await confirmDialog({ title: '彻底清除任务', message: `确定彻底清除任务「${title}」？\n\n将删除：${msgs} 条聊天消息及全部关联数据（不可恢复）\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`, danger: true, confirmText: '彻底清除' }))) return;
   try {
     const r = await window.api.zcTaskRemove(id);
@@ -344,11 +366,7 @@ async function removeTaskFlow(btn) {
 async function removeZcBatch() {
   const ids = [...zcSel];
   if (!ids.length) return;
-  if (await zcodeIsRunning()) {
-    await refreshEnv();
-    toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。');
-    return;
-  }
+  if (!(await ensureZcodeClosed('清除任务'))) return;
   const items = ids.map((id) => (zcTasks || []).find((t) => t.id === id)).filter(Boolean);
   if (!items.length) return;
   const msgs = items.reduce((s, t) => s + (t.msgs || 0), 0);
@@ -486,11 +504,7 @@ $('#scanTable tbody').addEventListener('dblclick', (e) => {
 async function removeZcProjectBatch() {
   const paths = [...zcProjSel];
   if (!paths.length) return;
-  if (await zcodeIsRunning()) {
-    await refreshEnv();
-    toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。');
-    return;
-  }
+  if (!(await ensureZcodeClosed('移除项目'))) return;
   const items = paths.map((p) => (lastScan && lastScan.paths || []).find((x) => x.path === p)).filter(Boolean);
   if (!items.length) return;
   const tasks = items.reduce((s, p) => s + (p.refs.tasks || 0), 0);
@@ -538,6 +552,7 @@ $('#migModalStart').addEventListener('click', async () => {
 
 /* ---------- ZCode：移除项目（二次确认） ---------- */
 async function removeProjectFlow(btn) {
+  if (!(await ensureZcodeClosed('移除项目'))) return;
   const p = btn.dataset.remove, sessions = +btn.dataset.sessions, tasks = +btn.dataset.tasks;
   const msg = `确定从 ZCode 中移除项目「${p}」？\n\n`
     + `将移除：程序设置记录、${tasks} 条任务登记、${sessions} 个会话（含全部聊天记录）\n`
@@ -585,11 +600,7 @@ $('#zcProjTasksList').addEventListener('click', (e) => {
   if (b) removeZcProjectTaskFlow(b.dataset.zdel, b.dataset.ztitle);
 });
 async function removeZcProjectTaskFlow(id, title) {
-  if (await zcodeIsRunning()) {
-    await refreshEnv();
-    toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。');
-    return;
-  }
+  if (!(await ensureZcodeClosed('清除任务'))) return;
   if (!(await confirmDialog({
     title: '彻底清除任务',
     message: `确定彻底清除任务「${title}」？\n\n将删除：该任务的全部聊天记录及关联数据（不可恢复）\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`,
