@@ -1,7 +1,7 @@
 param(
-  [string]$Src = "C:\Users\xyf43\atm\build\tray.ico",
-  [string]$PngOut = "C:\Users\xyf43\atm\build\appicon.png",
-  [string]$IcoOut = "C:\Users\xyf43\atm\build\tray.ico"
+  [string]$Src = "build\tray.ico",
+  [string]$PngOut = "build\appicon.png",
+  [string]$IcoOut = "build\tray.ico"
 )
 Add-Type -AssemblyName System.Drawing
 # 取 256x256 帧导出 PNG，供 Wails 生成 exe 图标

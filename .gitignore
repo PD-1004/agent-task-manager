@@ -1,11 +1,4 @@
-node_modules/
-release/
-release-new/
-dist/
-dist-out/
-tmp-*/
-tmp-asar-src/
-*.tmp
-*.tmp_old/
-builder-debug.yml
-npm-debug.log*
+build/bin
+node_modules
+*.exe
+# frontend/dist 是本项目的前端源码（非构建产物），必须纳入版本控制
