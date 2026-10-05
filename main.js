@@ -116,6 +116,8 @@ function registerIpc() {
     await requireClosed('zcode');
     return core.removeProject(projectPath, zlog);
   });
+  ipcMain.handle('zc:project:tasks', (_e, { projectPath }) => core.listProjectTasks(projectPath));
+  ipcMain.handle('zc:project:files', (_e, { projectPath }) => core.listProjectFiles(projectPath));
 
   /* ---------- ZCode 任务（默认会话区） ---------- */
   ipcMain.handle('zc:tasks', () => core.listDefaultTasks());

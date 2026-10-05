@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   scan: () => ipcRenderer.invoke('scan'),
   migrate: (oldPath, newPath) => ipcRenderer.invoke('migrate', { oldPath, newPath }),
   removeProject: (projectPath) => ipcRenderer.invoke('project:remove', { projectPath }),
+  zcProjectTasks: (projectPath) => ipcRenderer.invoke('zc:project:tasks', { projectPath }),
+  zcProjectFiles: (projectPath) => ipcRenderer.invoke('zc:project:files', { projectPath }),
   onLog: (cb) => ipcRenderer.on('pd:log', (_e, line) => cb(line)),
 
   // ZCode 任务（默认会话区）

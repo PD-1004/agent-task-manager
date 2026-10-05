@@ -110,18 +110,25 @@
           <div class="panel-head headrow">
             <div>
               <h2>项目清单</h2>
-              <p>状态为<b>失效</b>的项目 = 文件夹已搬走、但 ZCode 仍指向旧位置。迁移需 ZCode 已完全退出。</p>
+              <p>状态为<b>失效</b>的项目 = 文件夹已搬走、但 ZCode 仍指向旧位置。迁移需 ZCode 已完全退出。双击项目名称可查看该项目下的全部任务。</p>
             </div>
           </div>
           <div id="scanStats" class="statrow"></div>
+          <div class="taskbar">
+            <span id="zcProjCount" class="muted small"></span>
+            <span class="grow"></span>
+            <span id="zcProjSelInfo" class="selinfo"></span>
+            <button id="zcProjBatchDel" class="btn mini danger" disabled><svg class="ic"><use href="#i-trash"/></svg>批量移除</button>
+          </div>
           <div class="tablewrap" id="scanWrap">
             <table id="scanTable" class="hidden">
               <thead><tr>
-                <th class="sortable" data-key="path">路径</th>
+                <th class="ckcol"><input type="checkbox" id="zcProjSelAll" title="全选 / 取消全选"/></th>
+                <th class="sortable" data-key="name" title="显示为文件夹名；悬浮查看完整路径，双击查看该项目下的全部任务">项目名称</th>
                 <th class="sortable" data-key="exists">状态</th>
                 <th class="sortable" data-key="firstSeen">最早使用</th>
-                <th class="sortable num" data-key="tasks" title="口径：任务索引库 .zcode\v2\tasks-index.sqlite 的 tasks 表中，workspace_path 等于该项目路径的任务条数">任务</th>
-                <th class="sortable num" data-key="messages" title="口径：该项目下所有会话的聊天消息总条数 —— 用户每发一句算 1 条，AI 的一次回答算 1 条（AI 因调用工具而续跑产生的连续多条记录合并计 1）。来源：.zcode\cli\db\db.sqlite 的 message 表按会话归属路径汇总">消息</th>
+                <th class="sortable num" data-key="tasks" title="口径：任务索引库 .zcode\v2\tasks-index.sqlite 的 tasks 表中，workspace_path 等于该项目路径的任务条数">任务数</th>
+                <th class="sortable num" data-key="files" title="口径：该项目下所有会话的文本记录中引用、且磁盘上仍存在的文件去重计数">文件数</th>
                 <th>操作</th>
               </tr></thead>
               <tbody></tbody>
@@ -130,6 +137,18 @@
               <svg class="ic ic-xl"><use href="#i-search"/></svg>
               <p>正在扫描所有项目路径的绑定状态…</p>
               <p class="muted small">失效路径 = 文件夹已移动，但 ZCode 仍指向旧位置</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 项目任务弹窗（双击项目名称打开，可移除任务） -->
+        <div id="zcProjTasksModal" class="modal hidden">
+          <div class="modal-box files-modal">
+            <h3 id="zcProjTasksTitle">项目任务</h3>
+            <p class="modal-note" id="zcProjTasksMeta"></p>
+            <div class="filelist" id="zcProjTasksList"></div>
+            <div class="row modal-actions">
+              <button id="zcProjTasksClose" class="btn primary">关闭</button>
             </div>
           </div>
         </div>

@@ -528,8 +528,116 @@ function removeTask(taskId, log = logDefault) {
   return { msgs, disk };
 }
 
+/* ---------- 项目级：任务清单 / 文件统计（双击项目弹窗与「文件数」列） ---------- */
+
+// 会话表「最近使用」列探测：不同 ZCode 版本列名不同，找不到则回退创建时间
+function sessionLastExpr(db) {
+  const cols = db.prepare('PRAGMA table_info(session)').all().map((r) => r.name);
+  const hit = ['time_updated', 'updated_at', 'last_activity_at', 'modified_at'].find((c) => cols.includes(c));
+  return { cols, expr: hit ? `CAST(s.${hit} AS INTEGER)` : 'CAST(s.time_created AS INTEGER)' };
+}
+
+// 双击项目名称：列出该项目（含子目录）下的全部任务 —— 标题、消息数、最近使用、状态
+function listProjectTasks(projectPath) {
+  const p = String(projectPath || '').replace(/[\\/]+$/, '');
+  const name = path.basename(p) || p;
+  if (!p) throw new Error('路径为空');
+  if (!fs.existsSync(FILES.sessionDb)) return { name, projectPath: p, tasks: [] };
+  const sqlite = lazySqlite();
+  const db = new sqlite(FILES.sessionDb, { readonly: true, fileMustExist: true });
+  try {
+    if (!tableExists(db, 'session')) return { name, projectPath: p, tasks: [] };
+    const { cols, expr } = sessionLastExpr(db);
+    const pat = selfAndSubPatterns(p)[1];
+    const where = "WHERE (s.directory=? OR s.directory LIKE ? ESCAPE '\\' OR s.path=? OR s.path LIKE ? ESCAPE '\\')";
+    const params = [p, pat, p, pat];
+    const msgMap = new Map(countMessagesBy(db, 's.id', where, params).map((r) => [r.k, r.n]));
+    const hasStatus = cols.includes('status');
+    const rows = db.prepare(`
+      SELECT s.id, s.title, CAST(s.time_created AS INTEGER) tc, ${expr} lu${hasStatus ? ', s.status' : ''}
+      FROM session s ${where}
+      ORDER BY lu DESC`).all(...params);
+    const tasks = rows.map((r) => ({
+      id: r.id,
+      title: r.title || '(未命名)',
+      msgs: msgMap.get(r.id) || 0,
+      last: r.lu || r.tc || 0,
+      status: hasStatus ? String(r.status || '') : '',
+    }));
+    return { name, projectPath: p, tasks };
+  } finally { db.close(); }
+}
+
+// 项目文件引用正则：项目路径 + 分隔符（原形 / JSON 转义的 1~2 个反斜杠 / 正斜杠）+ 文件名
+const SEG_ESC_RE = /[.*+?^${}()|[\]\\]/g;
+function projectFileRegex(p) {
+  const segs = p.split(/[\\/]+/).filter(Boolean);
+  const sep = '(?:\\\\{1,2}|/)+'; // 分隔符：1~2 个反斜杠（JSON 转义）或斜杠
+  const body = segs.map((s) => s.replace(SEG_ESC_RE, '\\$&')).join(sep);
+  return new RegExp(body + sep + "[^\"'`\\s<>|*?)\\]}，。；：、！？]+", 'g');
+}
+
+// 从会话文本里提取该项目目录下被引用、且磁盘上仍存在的文件（去重）
+function collectProjectFiles(texts, p) {
+  const base = normKey(p) + '\\';
+  const re = projectFileRegex(p);
+  const seen = new Set();
+  const out = [];
+  for (const data of texts || []) {
+    if (!data || typeof data !== 'string') continue;
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(data)) !== null) {
+      const fp = normalizeWsPath(m[0]);
+      const k = normKey(fp);
+      if (!k.startsWith(base) || k === normKey(p)) continue; // 必须是项目内的文件路径
+      if (seen.has(k)) continue;
+      let st = null;
+      try { st = fs.statSync(fp); } catch { continue; } // 只统计磁盘上仍存在的文件
+      if (!st.isFile()) continue; // 目录不计入
+      seen.add(k);
+      out.push({ name: path.basename(fp), path: fp, size: st.size, mtime: st.mtimeMs });
+    }
+  }
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+}
+
+// 项目的「文件数」口径：该项目（含子目录）下所有会话的文本记录中引用、且磁盘上仍存在的文件去重数。
+// 双击项目弹窗中的任务清除沿用 removeTask（会话 ID 与任务 ID 同源）。
+function listProjectFiles(projectPath) {
+  const p = String(projectPath || '').replace(/[\\/]+$/, '');
+  if (!p || !fs.existsSync(FILES.sessionDb)) return [];
+  const sqlite = lazySqlite();
+  const db = new sqlite(FILES.sessionDb, { readonly: true, fileMustExist: true });
+  try {
+    if (!tableExists(db, 'session')) return [];
+    const pat = selfAndSubPatterns(p)[1];
+    const ids = db.prepare(`SELECT id FROM session
+      WHERE directory=? OR directory LIKE ? ESCAPE '\\' OR path=? OR path LIKE ? ESCAPE '\\'`).all(p, pat, p, pat).map((r) => r.id);
+    if (!ids.length) return [];
+    const texts = [];
+    for (const t of TASK_DATA_TABLES) {
+      if (!tableExists(db, t)) continue;
+      const cols = db.prepare(`PRAGMA table_info(${t})`).all().map((r) => r.name);
+      if (!cols.includes('session_id')) continue;
+      const col = ['data', 'content', 'text', 'payload'].find((c) => cols.includes(c));
+      if (!col) continue;
+      const likeJson = `%${likeEscape(jsonEscape(p))}%`;   // JSON 转义形态
+      const likeRaw = `%${likeEscape(p)}%`;                // 原始形态
+      for (const part of chunk(ids, 300)) {
+        const ph = part.map(() => '?').join(',');
+        const sql = `SELECT ${col} AS data FROM ${t} WHERE session_id IN (${ph}) AND (${col} LIKE ? OR ${col} LIKE ?)`;
+        for (const h of db.prepare(sql).all(...part, likeJson, likeRaw)) texts.push(h.data);
+      }
+    }
+    return collectProjectFiles(texts, p);
+  } finally { db.close(); }
+}
+
 module.exports = {
   ZCODE_DIR, FILES, DEFAULT_WS, INTERNAL_WS,
   envStatus, isZcodeRunning, killZcode,
   scanPaths, migrate, removeProject, listDefaultTasks, removeTask,
+  listProjectTasks, listProjectFiles,
 };

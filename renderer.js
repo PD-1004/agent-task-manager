@@ -367,8 +367,13 @@ async function removeZcBatch() {
   toast(fail ? `已清除 ${ok} 个任务，${fail} 个失败（可能是 ZCode 被重新打开）` : `已清除 ${ok} 个任务`, fail ? 'error' : 'success');
 }
 
-/* ---------- ZCode 项目（扫描 + 行内迁移弹窗 + 移除） ---------- */
+/* ---------- ZCode 项目（扫描 + 多选/批量移除 + 行内迁移弹窗 + 双击任务弹窗） ---------- */
 let lastScan = null, sortKey = null, sortDir = 1;
+const zcProjSel = new Set();        // 多选：项目路径集合
+const zcProjFileNums = new Map();   // 项目路径 -> 文件数（异步填充，供显示与排序）
+const zcProjFileLoading = new Set();
+
+function projName(p) { return String(p).split(/[\\/]/).pop() || p; }
 
 function sortedPaths() {
   if (!lastScan) return [];
@@ -378,35 +383,59 @@ function sortedPaths() {
   arr.sort((a, b) => {
     if (sortKey === 'exists') return ((a.exists ? 1 : 0) - (b.exists ? 1 : 0)) * dir;
     if (sortKey === 'firstSeen') return ((a.firstSeen || Infinity) - (b.firstSeen || Infinity)) * dir;
-    if (sortKey === 'path') {
-      const va = a.path.toLowerCase(), vb = b.path.toLowerCase();
+    if (sortKey === 'name') {
+      const va = projName(a.path).toLowerCase(), vb = projName(b.path).toLowerCase();
       return va < vb ? -dir : va > vb ? dir : 0;
     }
+    if (sortKey === 'files') return ((zcProjFileNums.get(a.path) || 0) - (zcProjFileNums.get(b.path) || 0)) * dir;
     return ((a.refs[sortKey] || 0) - (b.refs[sortKey] || 0)) * dir;
   });
   return arr;
 }
+const zcProjVisiblePaths = () => sortedPaths().map((p) => p.path);
+
+/* 「文件数」列懒加载：每个项目一次会话文本扫描（含子目录、引用且仍存在的文件去重），填充后更新单元格 */
+async function fillProjectFileCount(fpath, cell) {
+  if (!zcProjFileNums.has(fpath) && !zcProjFileLoading.has(fpath)) {
+    zcProjFileLoading.add(fpath);
+    try {
+      const files = await window.api.zcProjectFiles(fpath);
+      zcProjFileNums.set(fpath, files.length);
+    } catch { zcProjFileNums.set(fpath, -1); }
+    zcProjFileLoading.delete(fpath);
+  }
+  const n = zcProjFileNums.get(fpath);
+  cell.textContent = n == null ? '…' : (n < 0 ? '—' : String(n));
+}
+
 function renderRows() {
   const tb = $('#scanTable tbody'); tb.innerHTML = '';
-  for (const p of sortedPaths()) {
+  const rows = sortedPaths();
+  for (const p of rows) {
     const tr = document.createElement('tr');
     const acts = [];
-    acts.push(`<button class="btn mini" data-mig="${p.path}"><svg class="ic"><use href="#i-swap"/></svg>迁移</button>`);
-    if (p.refs.tasks || p.refs.sessions || p.refs.setting) acts.push(`<button class="btn mini danger" data-remove="${p.path}" data-sessions="${p.refs.sessions}" data-tasks="${p.refs.tasks}"><svg class="ic"><use href="#i-trash"/></svg>移除</button>`);
-    tr.innerHTML = `<td class="mono">${p.path}</td>
+    acts.push(`<button class="btn mini" data-mig="${escapeHtml(p.path)}"><svg class="ic"><use href="#i-swap"/></svg>迁移</button>`);
+    if (p.refs.tasks || p.refs.sessions || p.refs.setting) acts.push(`<button class="btn mini danger" data-remove="${escapeHtml(p.path)}" data-sessions="${p.refs.sessions}" data-tasks="${p.refs.tasks}"><svg class="ic"><use href="#i-trash"/></svg>移除</button>`);
+    tr.innerHTML = `<td class="ckcol"><input type="checkbox" data-psel="${escapeHtml(p.path)}"${zcProjSel.has(p.path) ? ' checked' : ''}></td>
+      <td class="zc-proj-name" data-path="${escapeHtml(p.path)}" title="双击查看该项目下的全部任务&#10;${escapeHtml(p.path)}">${escapeHtml(projName(p.path))}</td>
       <td>${pill(p.exists)}</td>
       <td>${p.firstSeenStr || '—'}</td>
-      <td class="num">${p.refs.tasks}</td><td class="num">${p.refs.messages || 0}</td>
-      <td>${acts.join(' ')}</td>`;
+      <td class="num">${p.refs.tasks}</td>
+      <td class="num zc-proj-files" data-fpath="${escapeHtml(p.path)}">…</td>
+      <td class="ops">${acts.join(' ')}</td>`;
+    tr.classList.toggle('sel', zcProjSel.has(p.path));
     tb.appendChild(tr);
   }
-  $$('#scanTable [data-mig]').forEach((b) => b.addEventListener('click', () => openMigModal(b.dataset.mig)));
-  $$('#scanTable [data-remove]').forEach((b) => b.addEventListener('click', () => removeProjectFlow(b)));
+  $$('#scanTable td.zc-proj-files').forEach((td) => fillProjectFileCount(td.dataset.fpath, td));
+  $('#zcProjCount').textContent = rows.length ? `共 ${rows.length} 个项目` : '';
+  syncSelUi(zcProjVisiblePaths(), zcProjSel, $('#zcProjSelInfo'), $('#zcProjBatchDel'), $('#zcProjSelAll'));
 }
 
 async function doScan() {
   try {
     lastScan = await window.api.scan();
+    // 已消失的项目要从选择集里剔除，避免批量按钮计数虚高
+    for (const p of [...zcProjSel]) if (!lastScan.paths.some((x) => x.path === p)) zcProjSel.delete(p);
     renderRows();
     $('#scanTable').classList.remove('hidden');
     $('#scanEmpty').classList.add('hidden');
@@ -421,11 +450,64 @@ async function doScan() {
 $$('#scanTable th.sortable').forEach((th) => th.addEventListener('click', () => {
   const key = th.dataset.key;
   if (sortKey === key) sortDir = -sortDir;
-  else { sortKey = key; sortDir = (key === 'exists' || key === 'firstSeen' || key === 'path') ? 1 : -1; }
+  else { sortKey = key; sortDir = (key === 'exists' || key === 'firstSeen' || key === 'name') ? 1 : -1; }
   $$('#scanTable th').forEach((x) => x.removeAttribute('data-dir'));
   th.setAttribute('data-dir', sortDir > 0 ? 'asc' : 'desc');
   renderRows();
 }));
+
+/* 项目表：单选 / 全选 / 批量移除 / 行内按钮 / 双击弹任务（事件委托，兼容重渲染） */
+$('#scanTable tbody').addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-psel]');
+  if (!cb) return;
+  if (cb.checked) zcProjSel.add(cb.dataset.psel); else zcProjSel.delete(cb.dataset.psel);
+  if (cb.closest('tr')) cb.closest('tr').classList.toggle('sel', cb.checked);
+  syncSelUi(zcProjVisiblePaths(), zcProjSel, $('#zcProjSelInfo'), $('#zcProjBatchDel'), $('#zcProjSelAll'));
+});
+$('#zcProjSelAll').addEventListener('change', (e) => {
+  const paths = zcProjVisiblePaths();
+  if (e.target.checked) paths.forEach((p) => zcProjSel.add(p));
+  else paths.forEach((p) => zcProjSel.delete(p));
+  renderRows();
+});
+$('#zcProjBatchDel').addEventListener('click', removeZcProjectBatch);
+$('#scanTable tbody').addEventListener('click', (e) => {
+  const mig = e.target.closest('[data-mig]');
+  if (mig) { openMigModal(mig.dataset.mig); return; }
+  const rm = e.target.closest('[data-remove]');
+  if (rm) { removeProjectFlow(rm); return; }
+});
+$('#scanTable tbody').addEventListener('dblclick', (e) => {
+  const cell = e.target.closest('.zc-proj-name');
+  if (cell) openZcProjectTasks(cell.dataset.path);
+});
+
+/* 批量移除选中项目（复用单项目移除逻辑：设置记录 + 任务登记 + 会话及聊天记录） */
+async function removeZcProjectBatch() {
+  const paths = [...zcProjSel];
+  if (!paths.length) return;
+  if (await zcodeIsRunning()) {
+    await refreshEnv();
+    toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。');
+    return;
+  }
+  const items = paths.map((p) => (lastScan && lastScan.paths || []).find((x) => x.path === p)).filter(Boolean);
+  if (!items.length) return;
+  const tasks = items.reduce((s, p) => s + (p.refs.tasks || 0), 0);
+  const sessions = items.reduce((s, p) => s + (p.refs.sessions || 0), 0);
+  const preview = items.slice(0, 12).map((p) => `· ${projName(p.path)}（${p.refs.tasks} 个任务）`).join('\n') + (items.length > 12 ? `\n…（共 ${items.length} 个）` : '');
+  const msg = `确定批量移除选中的 ${items.length} 个项目？\n\n${preview}\n\n`
+    + `将移除：程序设置记录、${tasks} 条任务登记、${sessions} 个会话（含全部聊天记录）\n`
+    + `· 磁盘上的项目文件夹不会被删除\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`;
+  if (!(await confirmDialog({ title: '批量移除项目', message: msg, danger: true, confirmText: '移除项目' }))) return;
+  let ok = 0, fail = 0;
+  for (const p of paths) {
+    try { await window.api.removeProject(p); ok++; } catch { fail++; }
+  }
+  zcProjSel.clear();
+  await doScan();
+  toast(fail ? `已移除 ${ok} 个项目，${fail} 个失败（可能是 ZCode 被重新打开）` : `已移除 ${ok} 个项目`, fail ? 'error' : 'success');
+}
 
 /* 项目迁移弹窗 */
 function openMigModal(oldPath) {
@@ -465,8 +547,61 @@ async function removeProjectFlow(btn) {
   if (!(await confirmDialog({ title: '移除项目', message: msg, danger: true, confirmText: '移除项目' }))) return;
   try {
     const r = await window.api.removeProject(p);
+    zcProjSel.delete(p);
     toast(`项目已移除（${r.sessions} 个会话、${r.messages} 条消息）`, 'success');
     await doScan();
+  } catch (e) { toast(e.message || String(e)); }
+}
+
+/* ---------- ZCode：项目任务弹窗（双击项目名称；支持移除单个任务） ---------- */
+let zcProjTasksCurrentPath = '';
+async function openZcProjectTasks(projectPath) {
+  zcProjTasksCurrentPath = projectPath || '';
+  $('#zcProjTasksModal').classList.remove('hidden');
+  $('#zcProjTasksTitle').textContent = '项目任务加载中…';
+  $('#zcProjTasksMeta').textContent = '';
+  $('#zcProjTasksList').innerHTML = '<p class="muted">正在读取…</p>';
+  try {
+    const r = await window.api.zcProjectTasks(projectPath);
+    const total = r.tasks.length;
+    const totalMsgs = r.tasks.reduce((a, t) => a + (t.msgs || 0), 0);
+    $('#zcProjTasksTitle').textContent = `项目「${r.name}」下的全部任务`;
+    $('#zcProjTasksMeta').textContent = `共 ${total} 个任务 · ${totalMsgs} 条消息 · 路径 ${r.projectPath}`;
+    if (!total) { $('#zcProjTasksList').innerHTML = '<p class="muted">该项目下没有会话记录</p>'; return; }
+    let html = '<table class="filetbl"><thead><tr><th>任务名称</th><th class="num">消息数</th><th>最近使用</th><th>状态</th><th></th></tr></thead><tbody>';
+    for (const t of r.tasks) {
+      const st = t.status ? escapeHtml(t.status) : '<span class="muted">—</span>';
+      html += `<tr><td>${escapeHtml(t.title)}</td><td class="num">${t.msgs}</td><td>${fmtDate(t.last)}</td><td>${st}</td>`
+        + `<td><button class="btn mini danger" data-zdel="${escapeHtml(t.id)}" data-ztitle="${escapeHtml(t.title)}"><svg class="ic"><use href="#i-trash"/></svg>移除</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    $('#zcProjTasksList').innerHTML = html;
+  } catch (e) { $('#zcProjTasksList').innerHTML = `<p class="bad">读取失败：${escapeHtml(e.message || e)}</p>`; }
+}
+$('#zcProjTasksClose').addEventListener('click', () => $('#zcProjTasksModal').classList.add('hidden'));
+$('#zcProjTasksModal').addEventListener('click', (e) => { if (e.target === $('#zcProjTasksModal')) $('#zcProjTasksModal').classList.add('hidden'); });
+$('#zcProjTasksList').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-zdel]');
+  if (b) removeZcProjectTaskFlow(b.dataset.zdel, b.dataset.ztitle);
+});
+async function removeZcProjectTaskFlow(id, title) {
+  if (await zcodeIsRunning()) {
+    await refreshEnv();
+    toast('检测到 ZCode 正在运行（可能已被重新打开）。请再次完全退出 ZCode 后重试。');
+    return;
+  }
+  if (!(await confirmDialog({
+    title: '彻底清除任务',
+    message: `确定彻底清除任务「${title}」？\n\n将删除：该任务的全部聊天记录及关联数据（不可恢复）\n· 此操作不创建备份\n· 需要 ZCode 已完全退出`,
+    danger: true, confirmText: '彻底清除',
+  }))) return;
+  try {
+    const r = await window.api.zcTaskRemove(id);
+    zcSel.delete(id);
+    toast(`任务已清除（${r.msgs} 条消息）`, 'success');
+    if (zcProjTasksCurrentPath) await openZcProjectTasks(zcProjTasksCurrentPath); // 刷新弹窗
+    doScan();
+    refreshZcTasks();
   } catch (e) { toast(e.message || String(e)); }
 }
 
@@ -748,7 +883,9 @@ $('#wbTable tbody').addEventListener('click', (e) => {
   const rm = e.target.closest('[data-remove]');
   if (rm) { removeWbSpaceFlow(rm); return; }
 });
+let wbSpaceTasksCurrentPath = '';
 async function openWbSpaceTasks(spacePath) {
+  wbSpaceTasksCurrentPath = spacePath || '';
   const box = $('#wbSpaceTasksModal'); box.classList.remove('hidden');
   $('#wbSpaceTasksTitle').textContent = '空间任务加载中…';
   $('#wbSpaceTasksMeta').textContent = '';
@@ -760,16 +897,43 @@ async function openWbSpaceTasks(spacePath) {
     $('#wbSpaceTasksTitle').textContent = `空间「${r.name}」下的全部任务`;
     $('#wbSpaceTasksMeta').textContent = `共 ${total} 个任务 · ${totalMsgs} 条消息 · 路径 ${r.spacePath}`;
     if (!total) { $('#wbSpaceTasksList').innerHTML = '<p class="muted">该空间下没有会话记录</p>'; return; }
-    let html = '<table class="filetbl"><thead><tr><th>任务名称</th><th class="num">消息数</th><th>最近使用</th><th>状态</th></tr></thead><tbody>';
+    let html = '<table class="filetbl"><thead><tr><th>任务名称</th><th class="num">消息数</th><th>最近使用</th><th>状态</th><th></th></tr></thead><tbody>';
     for (const t of r.tasks) {
       const st = t.deleted ? '<span class="muted">已删除</span>' : (t.status ? escapeHtml(t.status) : '正常');
-      html += `<tr><td>${escapeHtml(t.title)}</td><td class="num">${t.msgs}</td><td>${fmtDate(t.last)}</td><td>${st}</td></tr>`;
+      html += `<tr><td>${escapeHtml(t.title)}</td><td class="num">${t.msgs}</td><td>${fmtDate(t.last)}</td><td>${st}</td>`
+        + `<td><button class="btn mini danger" data-wdel="${escapeHtml(t.id)}" data-wtitle="${escapeHtml(t.title)}"><svg class="ic"><use href="#i-trash"/></svg>移除</button></td></tr>`;
     }
     html += '</tbody></table>';
     $('#wbSpaceTasksList').innerHTML = html;
   } catch (e) { $('#wbSpaceTasksList').innerHTML = `<p class="bad">读取失败：${escapeHtml(e.message || e)}</p>`; }
 }
 $('#wbSpaceTasksClose').addEventListener('click', () => $('#wbSpaceTasksModal').classList.add('hidden'));
+$('#wbSpaceTasksModal').addEventListener('click', (e) => { if (e.target === $('#wbSpaceTasksModal')) $('#wbSpaceTasksModal').classList.add('hidden'); });
+$('#wbSpaceTasksList').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-wdel]');
+  if (b) removeWbSpaceTaskFlow(b.dataset.wdel, b.dataset.wtitle);
+});
+/* 空间任务弹窗内移除单个任务：删除会话及聊天历史文件，随后刷新弹窗与相关清单 */
+async function removeWbSpaceTaskFlow(id, title) {
+  if (await window.api.wbRunning()) {
+    toast('检测到 WorkBuddy 正在运行！请先完全退出 WorkBuddy 再清除会话。');
+    refreshWbEnv();
+    return;
+  }
+  if (!(await confirmDialog({
+    title: '彻底清除任务',
+    message: `确定彻底清除任务「${title}」？\n\n将删除：会话记录、聊天历史文件、索引与备份文件（不可恢复）\n· 此操作不创建备份\n· 需要 WorkBuddy 已完全退出`,
+    danger: true, confirmText: '彻底清除',
+  }))) return;
+  try {
+    const r = await window.api.wbTaskRemove(id);
+    wbSel.delete(id);
+    toast(`任务已清除（${r.disk} 个关联文件）`, 'success');
+    if (wbSpaceTasksCurrentPath) await openWbSpaceTasks(wbSpaceTasksCurrentPath); // 刷新弹窗
+    wbSpaces();
+    wbTasks();
+  } catch (e) { toast(e.message || String(e)); }
+}
 
 /* 弹窗内「复制」按钮：事件委托，每个弹窗只绑定一次 */
 function bindCopyButtons(box) {

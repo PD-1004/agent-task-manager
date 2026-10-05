@@ -223,6 +223,9 @@ th.sortable:hover { color: var(--accent-deep); }
 #wbTaskTable th, #wbTaskTable td { padding: 5px 8px; font-size: 12px; }
 #zcTaskTable th, #wbTaskTable th { font-size: 11px; }
 #zcTaskTable .ckcol, #wbTaskTable .ckcol { width: 30px; padding-left: 9px; padding-right: 2px; }
+#scanTable .ckcol { width: 30px; padding-left: 9px; padding-right: 2px; }
+td.zc-proj-name { cursor: pointer; font-weight: 600; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.zc-proj-name:hover { color: var(--accent-deep); text-decoration: underline dotted; }
 #zcTaskTable th.num, #wbTaskTable th.num,
 #zcTaskTable td.num, #wbTaskTable td.num { width: 52px; padding-right: 10px; }
 th.sortable[data-dir]::after { content: "▾"; margin-left: 3px; font-size: 10px; }
