@@ -133,7 +133,7 @@ async function waitUntilZcodeClosed(timeout = 6000) {
     await new Promise((r) => setTimeout(r, 400));
   }
   return !(await zcodeIsRunning());
-
+}
 /* ZCode 运行中的统一拦截：明确说明原因并支持一键结束进程后继续。
    此前只是一闪而过的 toast，用户往往以为「点了没反应」 */
 async function ensureZcodeClosed(action) {
@@ -156,7 +156,6 @@ async function ensureZcodeClosed(action) {
   await refreshEnv();
   if (!closed) { toast('ZCode 进程仍未退出，请手动关闭（含托盘）后重试', 'error'); return false; }
   return true;
-}
 }
 $('#btnKill').addEventListener('click', async () => {
   const r = await window.api.killZcode();
