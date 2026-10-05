@@ -29,7 +29,7 @@
     "png-to-ico": "^3.0.2"
   },
   "build": {
-    "appId": "com.zcode.pathdoctor",
+    "appId": "com.pd1004.agent-task-manager",
     "productName": "Agent任务管理器",
     "directories": {
       "output": "release"
