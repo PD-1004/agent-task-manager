@@ -1,35 +1,18 @@
-# Build Directory
+# 程序图标与打包资料
 
-The build directory is used to house all the build files and assets for your application. 
+这个目录存放程序图标，以及生成 Windows 应用时需要的资料。
 
-The structure is:
+| 位置 | 用途 |
+| --- | --- |
+| `appicon.png` | 原始应用图标 |
+| `tray.ico` | 右下角系统托盘图标 |
+| `windows/icon.ico` | Windows 程序文件和窗口使用的图标 |
+| `windows/info.json` | Windows 文件属性中的名称与版本资料 |
+| `windows/wails.exe.manifest` | Windows 运行所需的配置 |
+| `windows/installer/` | 安装程序所需的资料 |
+| `darwin/` | 保留的 macOS 配置，当前下载版面向 Windows |
+| `bin/` | 本地生成的程序，不提交到仓库 |
 
-* bin - Output directory
-* darwin - macOS specific files
-* windows - Windows specific files
+更换应用图标时，应同步托盘和 Windows 图标，以及 `frontend/dist/assets/logo.png` 中的界面标识。保留透明背景，并检查小尺寸图标是否清晰。
 
-## Mac
-
-The `darwin` directory holds files specific to Mac builds.
-These may be customised and used as part of the build. To return these files to the default state, simply delete them
-and
-build with `wails build`.
-
-The directory contains the following files:
-
-- `Info.plist` - the main plist file used for Mac builds. It is used when building using `wails build`.
-- `Info.dev.plist` - same as the main plist file but used when building using `wails dev`.
-
-## Windows
-
-The `windows` directory contains the manifest and rc files used when building with `wails build`.
-These may be customised for your application. To return these files to the default state, simply delete them and
-build with `wails build`.
-
-- `icon.ico` - The icon used for the application. This is used when building using `wails build`. If you wish to
-  use a different icon, simply replace this file with your own. If it is missing, a new `icon.ico` file
-  will be created using the `appicon.png` file in the build directory.
-- `installer/*` - The files used to create the Windows installer. These are used when building using `wails build`.
-- `info.json` - Application details used for Windows builds. The data here will be used by the Windows installer,
-  as well as the application itself (right click the exe -> properties -> details)
-- `wails.exe.manifest` - The main application manifest file.
+本目录中的图标与配置需要保留。下载用的程序放到 GitHub 发布页。

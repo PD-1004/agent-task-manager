@@ -1,4 +1,41 @@
-build/bin
-node_modules
+# 下载与打包生成的程序
+/build/bin/
 *.exe
-# frontend/dist 是本项目的前端源码（非构建产物），必须纳入版本控制
+*-res.syso
+
+# 自动下载的依赖与本地缓存
+node_modules/
+.cache/
+.tmp/
+tmp/
+
+# 运行日志、临时文件和本地备份
+*.log
+*.tmp
+*.bak
+backups/
+
+# 私人的配置、登录信息和聊天数据库
+# 忽略规则不会自动删除已经提交的文件，提交前仍需检查。
+.env
+.env.*
+!.env.example
+.zcode/
+.workbuddy/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# 编辑器与操作系统产生的文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# frontend/dist 是当前程序实际使用的界面文件，需要提交。
+# build 中的图标和打包配置也需要提交，只忽略生成的程序和临时文件。
