@@ -286,6 +286,11 @@ func (a *App) KillZcode() OpResult {
 /* ---------- 一键迁移 ---------- */
 
 func (a *App) MigratePaths(oldP, newP string) (MigrateResult, error) {
+	if st := a.IsZcodeRunning(); st.Error != "" {
+		return MigrateResult{}, fmt.Errorf("无法确认 ZCode 是否已退出，迁移未开始：%s", st.Error)
+	} else if st.Running {
+		return MigrateResult{}, fmt.Errorf("ZCode 正在运行（PID %s），请先完全退出 ZCode（含托盘）再迁移", strings.Join(st.Pids, ","))
+	}
 	oldP = strings.TrimRight(oldP, "\\/")
 	newP = strings.TrimRight(newP, "\\/")
 	if oldP == "" || newP == "" {
@@ -294,114 +299,150 @@ func (a *App) MigratePaths(oldP, newP string) (MigrateResult, error) {
 	if normKey(oldP) == normKey(newP) {
 		return MigrateResult{}, fmt.Errorf("新旧路径相同，无需迁移")
 	}
-	if isInternalWs(oldP) {
-		return MigrateResult{}, fmt.Errorf("旧路径属于 ZCode 内部会话区（默认工作区），不是项目，不支持迁移")
+	if isInternalWs(oldP) || isInternalWs(newP) {
+		return MigrateResult{}, fmt.Errorf("ZCode 内部会话区（.zcode\\workspace）不是项目，不支持迁移")
 	}
-	if isInternalWs(newP) {
-		return MigrateResult{}, fmt.Errorf("新路径位于 ZCode 内部会话区（.zcode\\workspace），项目不应放在这里")
+	info, err := os.Stat(newP)
+	if err != nil {
+		return MigrateResult{}, fmt.Errorf("新路径无法访问：%s\n请先把项目文件夹移动/重命名到位：%w", newP, err)
 	}
-	if _, err := os.Stat(newP); err != nil {
-		return MigrateResult{}, fmt.Errorf("新路径在磁盘上不存在：%s\n请先把项目文件夹移动/重命名到位，再执行迁移", newP)
+	if !info.IsDir() {
+		return MigrateResult{}, fmt.Errorf("新路径必须是项目文件夹，不能是文件：%s", newP)
 	}
 
 	res := MigrateResult{}
 	files := zcodeFiles()
 	oldEsc, newEsc := jsonEscape(oldP), jsonEscape(newP)
-
-	// 1) setting.json
+	// 先解析设置，不写文件；数据库更新成功后才发布新项目路径。
+	var settingBytes []byte
 	if b, err := os.ReadFile(files["setting"]); err == nil {
 		var s map[string]any
-		if json.Unmarshal(b, &s) == nil {
-			n := 0
-			if rp, ok := s["recentProjects"].([]any); ok {
-				hasNew := false
-				for _, it := range rp {
-					if str, ok := it.(string); ok && str == newP {
+		if err := json.Unmarshal(b, &s); err != nil {
+			return res, fmt.Errorf("读取 setting.json 失败，迁移未开始：%w", err)
+		}
+		if rp, ok := s["recentProjects"].([]any); ok {
+			hasNew := false
+			for _, it := range rp {
+				if str, ok := it.(string); ok && normKey(str) == normKey(newP) {
+					hasNew = true
+				}
+			}
+			list := []any{}
+			for _, it := range rp {
+				if str, ok := it.(string); ok && normKey(str) == normKey(oldP) {
+					res.Setting++
+					if !hasNew {
+						list = append(list, newP)
 						hasNew = true
 					}
+					continue
 				}
-				list := []any{}
-				for _, it := range rp {
-					str, isStr := it.(string)
-					if isStr && normKey(str) == normKey(oldP) {
-						n++
-						if !hasNew {
-							list = append(list, newP)
-						}
-						continue
-					}
-					list = append(list, it)
-				}
-				s["recentProjects"] = list
+				list = append(list, it)
 			}
-			if lws, ok := s["lastWorkspaceSession"].([]any); ok {
-				for _, it := range lws {
-					if m, ok := it.(map[string]any); ok {
-						if wp, ok := m["workspacePath"].(string); ok && normKey(wp) == normKey(oldP) {
-							m["workspacePath"] = newP
-							n++
-						}
+			s["recentProjects"] = list
+		}
+		if lws, ok := s["lastWorkspaceSession"].([]any); ok {
+			for _, it := range lws {
+				if m, ok := it.(map[string]any); ok {
+					if wp, ok := m["workspacePath"].(string); ok && normKey(wp) == normKey(oldP) {
+						m["workspacePath"] = newP
+						res.Setting++
 					}
-				}
-			}
-			if n > 0 {
-				out, _ := json.MarshalIndent(s, "", "  ")
-				if err := os.WriteFile(files["setting"], append(out, '\n'), 0644); err == nil {
-					res.Setting = n
-					a.logf("✏️ setting.json：更新 %d 处", n)
 				}
 			}
 		}
-	} else {
-		a.logf("⚠️ setting.json 跳过：%v", err)
+		if res.Setting > 0 {
+			settingBytes, err = json.MarshalIndent(s, "", "  ")
+			if err != nil {
+				return res, fmt.Errorf("生成项目设置失败：%w", err)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return res, fmt.Errorf("读取项目设置失败，迁移未开始：%w", err)
 	}
 
-	// 2) tasks-index.sqlite
+	update := func(e execer, count *int, query string, args ...any) error {
+		r, err := e.Exec(query, args...)
+		if err != nil {
+			return err
+		}
+		n, err := r.RowsAffected()
+		if err == nil {
+			*count = int(n)
+		}
+		return err
+	}
+	var tasksTx, sessionsTx *sql.Tx
+	// 两个数据库先完成待提交更新；任一步 SQL 失败都回滚，不继续写设置。
 	if _, err := os.Stat(files["tasksDb"]); err == nil {
 		db, err := openRW(files["tasksDb"])
-		if err == nil {
-			func() {
-				defer db.Close()
-				if !tableExists(db, "tasks") {
-					a.logf("⚠️ 任务索引跳过：tasks 表不存在（ZCode 版本可能已变化）")
-					return
-				}
-				tx, err := db.Begin()
-				if err != nil {
-					return
-				}
-				res.Tasks = execAffected(tx, "UPDATE tasks SET workspace_path=?, workspace_key=? WHERE workspace_path=? OR workspace_key=?", newP, newP, oldP, oldP)
-				res.Meta = execAffected(tx, `UPDATE tasks SET meta_json = REPLACE(REPLACE(meta_json, ?, ?), ?, ?)
-					WHERE meta_json LIKE ? ESCAPE '\' OR meta_json LIKE ? ESCAPE '\'`,
-					oldEsc, newEsc, oldP, newP, "%"+likeEscape(oldEsc)+"%", "%"+likeEscape(oldP)+"%")
-				if tableExists(db, "task_group_view_node_orders") {
-					res.NodeOrders = execAffected(tx, `UPDATE task_group_view_node_orders SET node_key = REPLACE(REPLACE(node_key, ?, ?), ?, ?)
-						WHERE node_key LIKE ? ESCAPE '\'`, oldEsc, newEsc, oldP, newP, "%"+likeEscape(oldEsc)+"%")
-				}
-				tx.Commit()
-				a.logf("✏️ 任务索引：%d 条任务、%d 条元数据、%d 条排序记录", res.Tasks, res.Meta, res.NodeOrders)
-			}()
+		if err != nil {
+			return res, fmt.Errorf("打开任务索引失败：%w", err)
 		}
+		defer db.Close()
+		if !tableExists(db, "tasks") {
+			return res, fmt.Errorf("任务索引缺少 tasks 表，迁移未完成")
+		}
+		// 单连接事务开启后只能使用 tx；表结构查询必须提前完成。
+		hasNodeOrders := tableExists(db, "task_group_view_node_orders")
+		tasksTx, err = db.Begin()
+		if err != nil {
+			return res, fmt.Errorf("开启任务索引事务失败：%w", err)
+		}
+		defer tasksTx.Rollback()
+		if err = update(tasksTx, &res.Tasks, "UPDATE tasks SET workspace_path=?, workspace_key=? WHERE workspace_path=? OR workspace_key=?", newP, newP, oldP, oldP); err != nil {
+			return res, fmt.Errorf("更新任务路径失败，迁移已回滚：%w", err)
+		}
+		if err = update(tasksTx, &res.Meta, `UPDATE tasks SET meta_json = REPLACE(REPLACE(meta_json, ?, ?), ?, ?)
+			WHERE meta_json LIKE ? ESCAPE '\' OR meta_json LIKE ? ESCAPE '\'`, oldEsc, newEsc, oldP, newP, "%"+likeEscape(oldEsc)+"%", "%"+likeEscape(oldP)+"%"); err != nil {
+			return res, fmt.Errorf("更新任务元数据失败，迁移已回滚：%w", err)
+		}
+		if hasNodeOrders {
+			if err = update(tasksTx, &res.NodeOrders, `UPDATE task_group_view_node_orders SET node_key = REPLACE(REPLACE(node_key, ?, ?), ?, ?)
+				WHERE node_key LIKE ? ESCAPE '\' OR node_key LIKE ? ESCAPE '\'`, oldEsc, newEsc, oldP, newP, "%"+likeEscape(oldEsc)+"%", "%"+likeEscape(oldP)+"%"); err != nil {
+				return res, fmt.Errorf("更新项目排序失败，迁移已回滚：%w", err)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return res, fmt.Errorf("访问任务索引失败：%w", err)
 	}
-
-	// 3) session db
 	if _, err := os.Stat(files["sessionDb"]); err == nil {
 		db, err := openRW(files["sessionDb"])
-		if err == nil {
-			func() {
-				defer db.Close()
-				if !tableExists(db, "session") {
-					a.logf("⚠️ 会话库跳过：session 表不存在（ZCode 版本可能已变化）")
-					return
-				}
-				res.Sessions = execAffected(db, "UPDATE session SET directory=?, path=? WHERE directory=? OR path=?", newP, newP, oldP, oldP)
-				a.logf("✏️ 会话库：%d 个会话的工作目录已改绑", res.Sessions)
-			}()
+		if err != nil {
+			return res, fmt.Errorf("打开会话库失败，迁移已回滚：%w", err)
+		}
+		defer db.Close()
+		if !tableExists(db, "session") {
+			return res, fmt.Errorf("会话库缺少 session 表，迁移已回滚")
+		}
+		sessionsTx, err = db.Begin()
+		if err != nil {
+			return res, fmt.Errorf("开启会话事务失败，迁移已回滚：%w", err)
+		}
+		defer sessionsTx.Rollback()
+		if err = update(sessionsTx, &res.Sessions, "UPDATE session SET directory=?, path=? WHERE directory=? OR path=?", newP, newP, oldP, oldP); err != nil {
+			return res, fmt.Errorf("更新会话路径失败，迁移已回滚：%w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return res, fmt.Errorf("访问会话库失败，迁移已回滚：%w", err)
+	}
+	if tasksTx != nil {
+		if err := tasksTx.Commit(); err != nil {
+			return res, fmt.Errorf("提交任务索引失败，迁移未完成：%w", err)
 		}
 	}
-
+	if sessionsTx != nil {
+		if err := sessionsTx.Commit(); err != nil {
+			return res, fmt.Errorf("会话库提交失败，可能存在部分迁移，请检查或恢复备份：%w", err)
+		}
+	}
+	if settingBytes != nil {
+		if err := os.WriteFile(files["setting"], append(settingBytes, '\n'), 0644); err != nil {
+			return res, fmt.Errorf("数据库已更新，但项目设置保存失败，请检查或恢复备份：%w", err)
+		}
+	}
 	total := res.Setting + res.Tasks + res.Meta + res.NodeOrders + res.Sessions
-	a.logf("🎉 迁移完成。共 %d 处绑定更新。", total)
+	a.logf("🎉 迁移完成。共 %d 处绑定更新（设置 %d、任务 %d、元数据 %d、排序 %d、会话 %d）。", total, res.Setting, res.Tasks, res.Meta, res.NodeOrders, res.Sessions)
 	return res, nil
 }
 
@@ -1062,7 +1103,7 @@ func (a *App) OpenExternal(url string) {
 
 /* ---------- 更新检查 ---------- */
 
-const appVersion = "1.4.0"
+const appVersion = "1.4.1"
 
 type UpdateInfo struct {
 	Current   string `json:"current"`

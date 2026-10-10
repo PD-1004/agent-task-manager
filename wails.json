@@ -2,6 +2,9 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "AgentTaskManager",
   "outputfilename": "AgentTaskManager",
+  "info": {
+    "productVersion": "1.4.1"
+  },
   "frontend:install": "",
   "frontend:build": "",
   "frontend:dev:install": "",
