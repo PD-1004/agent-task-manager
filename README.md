@@ -2,15 +2,29 @@
   <img src="build/appicon.png" width="96" alt="Agent 任务管理器图标" />
 </p>
 
-# Agent 任务管理器
+<h1 align="center">Agent 任务管理器</h1>
 
-帮 ZCode 和 WorkBuddy 用户整理任务，修复项目搬家后的文件夹位置。
+<p align="center"><code>agent-task-manager</code></p>
 
-[![最新版本](https://img.shields.io/github/v/release/PD-1004/agent-task-manager?label=最新版本)](https://github.com/PD-1004/agent-task-manager/releases/latest)
-[![适用系统](https://img.shields.io/badge/系统-Windows%2010%20%2F%2011-blue)](#下载与打开)
-[![MIT 许可](https://img.shields.io/badge/许可-MIT-green)](LICENSE)
+<p align="center">
+  <em>整理 ZCode 和 WorkBuddy 的任务，让搬家的项目接上原来的记录。</em>
+</p>
 
-**[下载最新版](https://github.com/PD-1004/agent-task-manager/releases/latest)** · [怎么使用](#怎么使用) · [常见问题](docs/FAQ.md) · [反馈问题](https://github.com/PD-1004/agent-task-manager/issues)
+<p align="center">
+  <a href="https://github.com/PD-1004/agent-task-manager/releases/latest"><img src="https://img.shields.io/github/v/release/PD-1004/agent-task-manager?label=最新版本&amp;style=flat-square&amp;color=2563eb" alt="最新版本" /></a>
+  <a href="#下载与打开"><img src="https://img.shields.io/badge/系统-Windows%2010%20%2F%2011-2563eb?style=flat-square" alt="适用系统：Windows 10 / 11" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/许可-MIT-16a34a?style=flat-square" alt="MIT 许可" /></a>
+</p>
+
+<p align="center">
+  <strong><a href="https://github.com/PD-1004/agent-task-manager/releases/latest">下载最新版</a></strong>
+  &nbsp;·&nbsp; <a href="#怎么使用">怎么使用</a>
+  &nbsp;·&nbsp; <a href="#界面预览">界面预览</a>
+  &nbsp;·&nbsp; <a href="docs/FAQ.md">常见问题</a>
+  &nbsp;·&nbsp; <a href="https://github.com/PD-1004/agent-task-manager/issues">反馈问题</a>
+</p>
+
+---
 
 ## 它能帮你做什么
 
@@ -24,7 +38,7 @@
 | 想知道某个任务涉及哪些文件 | 双击任务名称，查看可找到的文件记录 |
 | WorkBuddy 的空间搬走了 | 在「空间」页查看状态、任务和新旧位置 |
 
-适用于 **Windows 10 / 11，64 位系统**。它是独立的辅助工具，不是 ZCode 或 WorkBuddy 官方客户端。
+> **适用系统：Windows 10 / 11，64 位。** 这是独立的辅助工具，不是 ZCode 或 WorkBuddy 官方客户端。
 
 当前已有可下载版本，项目正在维护。版本更新和已知问题可查看[发布记录](https://github.com/PD-1004/agent-task-manager/releases)与[反馈区](https://github.com/PD-1004/agent-task-manager/issues)。
 
@@ -34,7 +48,7 @@
 2. 找到页面下方的 **Assets**，下载名字为 `AgentTaskManager-版本号.exe` 的文件。
 3. 双击下载的文件，选择 **ZCode** 或 **WorkBuddy**。
 
-日常使用下载 `.exe` 即可。页面上的 `Source code` 是项目文件，无需下载。
+> **下载提示：** 日常使用下载 `.exe` 即可。页面上的 `Source code` 是项目文件，无需下载。
 
 ## 怎么使用
 
@@ -51,7 +65,7 @@
 
 例如，文件夹从 `D:\我的项目` 搬到 `E:\我的项目`，就把旧位置迁移到新位置。
 
-这里的「迁移」是更新软件记住的位置。请先把本地文件夹搬好。
+> **先搬文件夹，再迁移记录。** 这里的「迁移」是更新软件记住的位置。
 
 ### 2. 查找和整理任务
 
@@ -60,7 +74,7 @@
 - 勾选需要清理的任务，再点击清除。全选只针对当前搜索结果。
 - ZCode 的「任务」页主要显示没有打开具体项目时产生的任务。具体项目中的任务，到 **项目** 页双击项目名称查看。
 
-**清除任务会删除相关聊天记录，不能直接撤销。** 不确定的任务，先保留。
+> **清除任务会删除相关聊天记录，不能直接撤销。** 不确定的任务，先保留。
 
 ### 3. 管理 WorkBuddy 空间
 
@@ -77,15 +91,27 @@ WorkBuddy 的任务列表会跟随当前账号切换，无需重新启动管理�
 
 ### 选择要管理的软件
 
-![选择 ZCode 或 WorkBuddy](docs/img/01-select.png)
+<p align="center">
+  <img src="docs/img/01-select.png" width="900" alt="选择 ZCode 或 WorkBuddy" />
+</p>
 
-### 查看 ZCode 任务
+<details>
+<summary><strong>查看 ZCode 任务列表截图</strong></summary>
 
-![ZCode 任务列表](docs/img/02-zcode-tasks.png)
+<p align="center">
+  <img src="docs/img/02-zcode-tasks.png" width="900" alt="ZCode 任务列表" />
+</p>
 
-### 管理 WorkBuddy 空间
+</details>
 
-![WorkBuddy 空间列表](docs/img/03-wb-spaces.png)
+<details>
+<summary><strong>查看 WorkBuddy 空间列表截图</strong></summary>
+
+<p align="center">
+  <img src="docs/img/03-wb-spaces.png" width="900" alt="WorkBuddy 空间列表" />
+</p>
+
+</details>
 
 ## 操作前记住这几件事
 
@@ -93,17 +119,6 @@ WorkBuddy 的任务列表会跟随当前账号切换，无需重新启动管理�
 - **看不到任务，不代表任务已被删除。** 先检查旧位置，别急着点击「移除」。
 - **文件列表为空，不代表本地文件丢了。** 搬家前的聊天可能仍写着旧位置，请到新文件夹检查。
 - 迁移失败时，先保留错误提示和备份，再[反馈问题](https://github.com/PD-1004/agent-task-manager/issues)。
-
-## 项目资料放在哪里
-
-| 位置 | 放什么 |
-| --- | --- |
-| [README.md](README.md) | 软件介绍、下载入口和基本操作 |
-| [docs/](docs/README.md) | 常见问题、目录说明和界面截图 |
-| [build/](build/README.md) | 程序图标和打包所需资料 |
-| `frontend/` | 软件界面文件 |
-| 根目录的 `.go` 文件 | 软件功能代码 |
-| [.github/](.github/) | 反馈问题和提交改动时使用的模板 |
 
 ## 反馈与参与
 
