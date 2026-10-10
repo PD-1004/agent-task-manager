@@ -12,7 +12,7 @@ function toast(msg, type = 'error') {
   setTimeout(() => { box.classList.remove('show'); setTimeout(() => box.remove(), 300); }, 4500);
 }
 
-/* ---------- 通用确认弹窗（替代原生 confirm，返回 Promise<boolean>） ---------- */
+/* ---------- 通用确认弹窗（返回 Promise<boolean>） ---------- */
 function confirmDialog({ title = '确认操作', message = '', danger = false, icon, confirmText = '确定', cancelText = '取消' } = {}) {
   return new Promise((resolve) => {
     const m = $('#confirmModal');
@@ -156,7 +156,7 @@ async function onRemoveFailed(err, retry) {
 }
 $('#btnKill').addEventListener('click', async () => {
   const r = await window.api.killZcode();
-  if (r && r.ok === false) return; // 用户在原生确认框选择了「取消」
+  if (r && r.ok === false) return; // 用户取消操作
   await waitUntilZcodeClosed();
   await refreshEnv();
 });

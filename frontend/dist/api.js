@@ -1,6 +1,4 @@
-/* Wails 适配层
-   renderer.js 通过 window.api 调用后端，这里把同名接口映射到 Wails 绑定的 Go 方法，
-   renderer.js 无需改动即可继续复用。 */
+/* 将 window.api 接口映射到 Wails 绑定的 Go 方法。 */
 (function () {
   function app() { return window.go.main.App; }
 

@@ -50,13 +50,13 @@ body {
 .sidebar {
   width: 216px; flex: none; display: flex; flex-direction: column;
   border-right: 1px solid var(--line); padding: 22px 14px 14px;
-  background: #f8f6f2; /* 米白暖底，替换原来的玻璃半透明底 */
+  background: #f8f6f2;
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 22px; }
 .logo {
   width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-  color: #fff; /* 新版 logo 自带渐变底与透明通道，这里不再叠色块 */
+  color: #fff; /* 图标自带背景，避免叠加底色 */
 }
 .logo-img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .logo-lg { width: 44px; height: 44px; }
@@ -90,7 +90,7 @@ body {
 .side-help:active { transform: translateY(1px); }
 .side-ver { padding: 6px 12px 2px; font-size: 11px; color: var(--muted); }
 
-/* 页面 Hero：主题功能文案（该大就大） */
+/* 页面标题 */
 .hero { padding: 2px 6px 18px; flex: none; }
 .hero h1 {
   margin: 0 0 8px; font-size: 23px; font-weight: 650; letter-spacing: -0.2px;
@@ -356,7 +356,7 @@ td.num { color: var(--muted); font-variant-numeric: tabular-nums; }
 .modal-note { color: var(--muted); font-size: 12px; margin-top: 10px; }
 .modal-actions { justify-content: flex-end; margin-top: 14px; }
 
-/* 通用确认弹窗（替代原生 confirm） */
+/* 通用确认弹窗 */
 .confirm-box { width: min(440px, calc(100vw - 48px)); padding: 20px 22px; }
 .confirm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .confirm-head h3 { margin: 0; font-size: 15.5px; color: var(--text); }
