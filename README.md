@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PD-1004/agent-task-manager/releases/latest"><img src="https://img.shields.io/github/v/release/PD-1004/agent-task-manager?label=最新版本&amp;style=flat-square&amp;color=2563eb" alt="最新版本" /></a>
+  <a href="https://github.com/PD-1004/agent-task-manager/releases/latest"><img src="https://img.shields.io/github/v/release/PD-1004/agent-task-manager?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&amp;style=flat-square&amp;color=2563eb" alt="最新版本" /></a>
   <a href="#下载与打开"><img src="https://img.shields.io/badge/系统-Windows%2010%20%2F%2011-2563eb?style=flat-square" alt="适用系统：Windows 10 / 11" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/许可-MIT-16a34a?style=flat-square" alt="MIT 许可" /></a>
 </p>
