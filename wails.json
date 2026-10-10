@@ -3,7 +3,7 @@
   "name": "AgentTaskManager",
   "outputfilename": "AgentTaskManager",
   "info": {
-    "productVersion": "1.4.1"
+    "productVersion": "1.4.2"
   },
   "frontend:install": "",
   "frontend:build": "",

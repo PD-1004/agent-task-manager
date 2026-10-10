@@ -1103,7 +1103,7 @@ func (a *App) OpenExternal(url string) {
 
 /* ---------- 更新检查 ---------- */
 
-const appVersion = "1.4.1"
+const appVersion = "1.4.2"
 
 type UpdateInfo struct {
 	Current   string `json:"current"`
