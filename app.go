@@ -313,9 +313,55 @@ func (a *App) ScanPaths() (ScanResult, error) {
 		db.Close()
 	}
 
+	// —— 按 ZCode 自身的项目识别修正 ——
+	// ZCode 只把出现在 setting.json（recentProjects / lastWorkspaceSession 的 project）
+	// 中的路径视为独立项目。若某路径从未出现在 setting 中、只是另一个已识别项目的
+	// 子目录（典型如子代理会话目录 .zcode\skills\*\references\*），则不作为独立项目
+	// 展示，并将其引用归并到最近的祖先项目，避免把子代理会话目录误报为项目。
+	realProj := func(e *PathEntry) bool { return e.Refs.Setting > 0 || e.Refs.LastSession > 0 }
+	ancestorOf := func(k, a string) bool {
+		k = strings.ReplaceAll(k, "\\", "/")
+		a = strings.ReplaceAll(a, "\\", "/")
+		return k != a && strings.HasPrefix(k, a+"/")
+	}
+	mergeInto := map[*PathEntry]*PathEntry{} // 子条目 -> 最近的真实项目祖先
+	for _, e := range entries {
+		if realProj(e) {
+			continue
+		}
+		ek := normKey(e.Path)
+		var best *PathEntry
+		for _, f := range entries {
+			if f == e || !realProj(f) {
+				continue
+			}
+			if ancestorOf(ek, normKey(f.Path)) && (best == nil || len(normKey(f.Path)) > len(normKey(best.Path))) {
+				best = f
+			}
+		}
+		if best != nil {
+			mergeInto[e] = best
+		}
+	}
+	dropKey := map[string]bool{}
+	for e, anc := range mergeInto {
+		anc.Refs.Setting += e.Refs.Setting
+		anc.Refs.Tasks += e.Refs.Tasks
+		anc.Refs.Sessions += e.Refs.Sessions
+		anc.Refs.Messages += e.Refs.Messages
+		anc.Refs.LastSession += e.Refs.LastSession
+		if e.FirstSeen > 0 && (anc.FirstSeen == 0 || e.FirstSeen < anc.FirstSeen) {
+			anc.FirstSeen = e.FirstSeen
+		}
+		dropKey[normKey(e.Path)] = true
+	}
+
 	list := make([]PathEntry, 0, len(entries))
 	stale := 0
 	for _, e := range entries {
+		if dropKey[normKey(e.Path)] {
+			continue
+		}
 		if _, err := os.Stat(e.Path); err == nil {
 			e.Exists = true
 		} else {

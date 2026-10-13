@@ -13,6 +13,7 @@ tmp/
 *.log
 *.tmp
 *.bak
+*.bak_*
 backups/
 
 # 私人的配置、登录信息和聊天数据库
